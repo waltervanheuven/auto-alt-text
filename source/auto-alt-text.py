@@ -131,13 +131,17 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--prompt", type=str, default="Describe image clearly and detailed. \
                         Check if graph and if so report summary of what the graph depicts. \
                         Make sure to ouput only up to 125 characters.", help="LLaVA prompt")
+    parser.add_argument("--server", type=str, default="http://localhost", help="server URL")
+    parser.add_argument("--port", type=str, default="8007", help="server port")
     parser.add_argument("--debug", action='store_true', default=False, help="debug")
 
     args = parser.parse_args()
 
-    server_url = "http://localhost:8007"
+    server_url = f"{args.server}:{args.port}"
     if check_server_is_running(server_url):
-        server_url = "http://localhost:8007/completion"
+        server_url = f"{server_url}/completion"
+        print(f"LLaVA server: '{server_url}'")
+
         # Read PowerPoint file and list images
         powerpoint_file_name = args.file
         

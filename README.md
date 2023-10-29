@@ -18,7 +18,7 @@ Show images and current alt text in Powerpoint file
 python source/auto-alt-text.py tmp/test.pptx
 ```
 
-## Install LLaVA implementation
+## Install LLaVA
 
 Implementation of LLaVA is available in [llama.cpp](https://github.com/ggerganov/llama.cpp).
 

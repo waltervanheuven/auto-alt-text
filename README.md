@@ -46,7 +46,7 @@ Start server:
 ./llama.cpp/server -t 4 -c 4096 -ngl 50 -m llama.cpp/models/ggml-model-q5_k.gguf --host 0.0.0.0 --port 8007 --mmproj llama.cpp/models/mmproj-model-f16.gguf
 ```
 
-Test:
+Add alt text using LLaVA:
 
 ```sh
 python source/main.py tmp/test.pptx --add

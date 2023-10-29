@@ -13,6 +13,16 @@ from pptx.shapes.base import BaseShape
 import base64
 from typing import List
 
+
+def check_server_is_running(url: str) -> bool:
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            return True
+    except requests.ConnectionError:
+        return False
+    return False
+
 # https://github.com/scanny/python-pptx/pull/512
 def shape_get_alt_text(shape: BaseShape) -> str:
     """ Alt-text defined in shape's `descr` attribute, or '' if not present. """
@@ -22,7 +32,7 @@ def shape_set_alt_text(shape: BaseShape, alt_text: str):
     """ Set alt-text in shape """
     shape._element._nvXxPr.cNvPr.attrib["descr"] = alt_text
 
-def process_images_from_pptx(file_path: str, set_image_description: bool, DEBUG: bool = False) -> None:
+def process_images_from_pptx(file_path: str, set_image_description: bool, server_url: str, prompt: str, DEBUG: bool = False) -> None:
     """ 
     Loop through images in the slides of a Powerpint file and set image description based 
     on image description from Llava
@@ -74,28 +84,23 @@ def process_images_from_pptx(file_path: str, set_image_description: bool, DEBUG:
                     img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
 
                     # Use LLaVa to get image descriptions
-                    url = "http://localhost:8007/completion"
                     header = {"Content-Type": "application/json"}
-                    prompt = "Describe image clearly and detailed. Check if graph and if so report summary of what the graph depicts. Use only 125 characters."
-
                     data = {
                         "image_data": [{"data": img_base64, "id": 1}],
                         "prompt": f"USER:[img-1] {prompt}\nASSISTANT:",
                         "n_predict": 123,
                         "temp": 0.1
                     }
-                    response = requests.post(url, headers=header, json=data)
-
+                    response = requests.post(server_url, headers=header, json=data)
                     response_data = response.json()
 
                     if DEBUG:
                         print(response_data)
                         print()
 
-                    #print(response.content.decode('utf-8'))
-                    alt_text = response_data.get('content', '')
-                    alt_text = alt_text.strip()
-                    print(f"Len: {len(alt_text)}, Content: {alt_text}")
+                    alt_text = response_data.get('content', '').strip()
+                    if DEBUG:
+                        print(f"Len: {len(alt_text)}, Content: {alt_text}")
 
                     if len(response.text) > 0:
                         image_description = alt_text
@@ -133,20 +138,30 @@ def main(argv: List[str]) -> int:
     """    
     parser = argparse.ArgumentParser(description='Add alt-text automatically to images in Powerpoint')
     parser.add_argument("file", type=str, help="Powerpoint file")
-    parser.add_argument("--add", action='store_true', default=False, help="Flag to add alt-text to images", )
+    parser.add_argument("--add", action='store_true', default=False, help="Flag to add alt-text to images")
+    parser.add_argument("--prompt", type=str, default="Describe image clearly and detailed. \
+                        Check if graph and if so report summary of what the graph depicts. \
+                        Make sure to ouput only up to 125 characters.", help="LLaVA prompt")
+    parser.add_argument("--debug", action='store_true', default=False, help="Debug")
 
     args = parser.parse_args()
 
-    # Read PowerPoint file and list images
-    powerpoint_file_name = args.file
-    
-    if os.path.isfile(powerpoint_file_name):
-        process_images_from_pptx(powerpoint_file_name, args.add)
+    server_url = "http://localhost:8007"
+    if check_server_is_running(server_url):
+        server_url = "http://localhost:8007/completion"
+        # Read PowerPoint file and list images
+        powerpoint_file_name = args.file
+        
+        if os.path.isfile(powerpoint_file_name):
+            process_images_from_pptx(powerpoint_file_name, args.add, server_url, args.prompt, args.debug)
+        else:
+            print(f"Error: File {powerpoint_file_name} not found.")
+            return 1
+        
+        return 0
     else:
-        print(f"Error: File {powerpoint_file_name} not found.")
+        print(f"Unable to access server at '{server_url}'")
         return 1
-    
-    return 0
 
 if __name__ == "__main__":
     exit_code = main(sys.argv[1:])

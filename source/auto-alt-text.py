@@ -54,57 +54,14 @@ def process_images_from_pptx(file_path: str, set_image_description: bool, server
     # Loop through slides
     slide_cnt = 1
     for slide in prs.slides:
-
+        # loop through shapes
         for shape in slide.shapes:
-
             # Check if the shape has a picture
             if shape.shape_type == 13:  # Shape type 13 corresponds to a picture
                 
                 if set_image_description:
-
-                    image_file_name = f"slide_{slide_cnt}_pict_{shape.name}.jpg"
-                    image_file_path = os.path.join("tmp", image_file_name)
-                    print(f"Processing image: {image_file_path}")
-                    
-                    # get image
-                    image_stream = shape.image.blob
-
-                    # save image
-                    with open(image_file_path, "wb") as f:
-                        f.write(image_stream)
-
-                    # read image
-                    with open(image_file_path, 'rb') as img_file:
-                        img_byte_arr = img_file.read()
-
-                    # encode in base64
-                    img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
-
-                    # Use LLaVa to get image descriptions
-                    header = {"Content-Type": "application/json"}
-                    data = {
-                        "image_data": [{"data": img_base64, "id": 1}],
-                        "prompt": f"USER:[img-1] {prompt}\nASSISTANT:",
-                        "n_predict": 123,
-                        "temp": 0.1
-                    }
-                    response = requests.post(server_url, headers=header, json=data)
-                    response_data = response.json()
-
-                    if DEBUG:
-                        print(response_data)
-                        print()
-
-                    alt_text = response_data.get('content', '').strip()
-                    if DEBUG:
-                        print(f"Len: {len(alt_text)}, Content: {alt_text}")
-
-                    if len(response.text) > 0:
-                        image_description = alt_text
-                        shape_set_alt_text(shape, image_description)
-                    else:
-                        print("No content.")
-
+                    set_alt_text(shape, slide_cnt, server_url, prompt, DEBUG)
+                
                 # report alt text
                 stored_alt_text = shape_get_alt_text(shape)
                 feedback = f"Slide: {slide_cnt}, Picture: '{shape.name}', alt_text: '{stored_alt_text}'"
@@ -123,16 +80,51 @@ def process_images_from_pptx(file_path: str, set_image_description: bool, server
         print(f"Saving to {outfile}")
         prs.save(outfile)
 
+def set_alt_text(shape: BaseShape, slide_cnt: int, server_url: str, prompt: str, DEBUG: bool) -> None:
+    image_file_name = f"slide_{slide_cnt}_pict_{shape.name}.jpg"
+    image_file_path = os.path.join("tmp", image_file_name)
+    print(f"Processing image: {image_file_path}")
+    
+    # get image
+    image_stream = shape.image.blob
+
+    # save image
+    with open(image_file_path, "wb") as f:
+        f.write(image_stream)
+
+    # read image
+    with open(image_file_path, 'rb') as img_file:
+        img_byte_arr = img_file.read()
+
+    # encode in base64
+    img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
+
+    # Use LLaVa to get image descriptions
+    header = {"Content-Type": "application/json"}
+    data = {
+        "image_data": [{"data": img_base64, "id": 1}],
+        "prompt": f"USER:[img-1] {prompt}\nASSISTANT:",
+        "n_predict": 123,
+        "temp": 0.1
+    }
+    response = requests.post(server_url, headers=header, json=data)
+    response_data = response.json()
+
+    if DEBUG:
+        print(response_data)
+        print()
+
+    alt_text = response_data.get('content', '').strip()
+    if DEBUG:
+        print(f"Len: {len(alt_text)}, Content: {alt_text}")
+
+    if len(response.text) > 0:
+        image_description = alt_text
+        shape_set_alt_text(shape, image_description)
+    else:
+        print("No content.")
+
 def main(argv: List[str]) -> int:
-    """
-    Add alt-text automatically to images in PowerPoint.
-
-    Parameters:
-        argv (List[str]): Command line arguments
-
-    Returns:
-        int: Exit code (0 if successful, else non-zero)
-    """    
     parser = argparse.ArgumentParser(description='Add alt-text automatically to images in Powerpoint')
     parser.add_argument("file", type=str, help="Powerpoint file")
     parser.add_argument("--add", action='store_true', default=False, help="Flag to add alt-text to images")

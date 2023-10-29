@@ -5,14 +5,11 @@ Add automatically alt text to each picture in a powerpoint file
 import os
 import sys
 import argparse
-import subprocess
 import requests
-import json
-from pptx import Presentation
-from pptx.shapes.base import BaseShape
 import base64
 from typing import List
-
+from pptx import Presentation
+from pptx.shapes.base import BaseShape
 
 def check_server_is_running(url: str) -> bool:
     try:

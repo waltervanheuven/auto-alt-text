@@ -127,11 +127,11 @@ def set_alt_text(shape: BaseShape, slide_cnt: int, server_url: str, prompt: str,
 def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(description='Add alt-text automatically to images in Powerpoint')
     parser.add_argument("file", type=str, help="Powerpoint file")
-    parser.add_argument("--add", action='store_true', default=False, help="Flag to add alt-text to images")
+    parser.add_argument("--add", action='store_true', default=False, help="flag to add alt-text to images")
     parser.add_argument("--prompt", type=str, default="Describe image clearly and detailed. \
                         Check if graph and if so report summary of what the graph depicts. \
                         Make sure to ouput only up to 125 characters.", help="LLaVA prompt")
-    parser.add_argument("--debug", action='store_true', default=False, help="Debug")
+    parser.add_argument("--debug", action='store_true', default=False, help="debug")
 
     args = parser.parse_args()
 

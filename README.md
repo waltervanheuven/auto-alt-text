@@ -30,12 +30,11 @@ make
 # create folder `llama.cpp` in main folder `auto-alt-text`
 mkdir llama.cpp
 mkdir llama.cpp/models
-
 ```
 
 Copy `server` from `llama.cpp` directory to `llama.cpp` with `auto-alt-text`. For Metal on macOS also copy `ggml-metal.metal` to the folder `llama.cpp`.
 
-Required models for [LLaVA](https://llava-vl.github.io) can be found on huggingface: https://huggingface.co/mys/ggml_llava-v1.5-7b/tree/main
+Required models for [LLaVA](https://llava-vl.github.io) can be found on huggingface: [https://huggingface.co/mys/ggml_llava-v1.5-7b/tree/main](https://huggingface.co/mys/ggml_llava-v1.5-7b/tree/main)
 
 Download `ggml-model-q5_k.gguf` and `mmproj-model-f16.gguf` and move to folder `ggml_llava-v1.5-7b` within the folder `llama.cpp/models`.
 

@@ -1,0 +1,585 @@
+[1698616570] Multi Modal Mode Enabled[1698616570] warming up the model with an empty run
+[1698616571] Available slots:
+[1698616571]  -> Slot 0 - max context: 4096
+[1698616571] 
+llama server listening at http://0.0.0.0:8007
+
+[1698616571] all slots are idle and system prompt is empty, clear the KV cache
+[1698616576] slot 0 - image loaded [id: 1] resolution (726 x 446)
+[1698616576] slot 0 is processing [task id: 0]
+[1698616576] slot 0 : kv cache rm - [0, end)
+[1698616576] slot 0 - encoding image [id: 1]
+[1698616579] sampled token:  1670: ' There'
+[1698616579] sampled token:   526: ' are'
+[1698616580] sampled token:  3023: ' four'
+[1698616580] sampled token:   270: ' d'
+[1698616580] sampled token:  1862: 'ots'
+[1698616580] sampled token: 29892: ','
+[1698616580] sampled token:  2211: ' three'
+[1698616580] sampled token:   310: ' of'
+[1698616580] sampled token:   607: ' which'
+[1698616580] sampled token:   526: ' are'
+[1698616580] sampled token: 18345: ' grey'
+[1698616580] sampled token:   322: ' and'
+[1698616580] sampled token:   697: ' one'
+[1698616580] sampled token:   338: ' is'
+[1698616580] sampled token: 24841: ' orange'
+[1698616580] sampled token: 29889: '.'
+[1698616580] sampled token:   450: ' The'
+[1698616580] sampled token: 22558: ' circles'
+[1698616580] sampled token:   505: ' have'
+[1698616580] sampled token:   263: ' a'
+[1698616580] sampled token:  2788: ' similar'
+[1698616580] sampled token:  8267: ' shape'
+[1698616580] sampled token:   304: ' to'
+[1698616580] sampled token:   278: ' the'
+[1698616580] sampled token: 13328: ' yellow'
+[1698616580] sampled token:   270: ' d'
+[1698616580] sampled token:  1862: 'ots'
+[1698616580] sampled token:   297: ' in'
+[1698616580] sampled token:   278: ' the'
+[1698616580] sampled token:  1967: ' image'
+[1698616580] sampled token:   373: ' on'
+[1698616580] sampled token:   278: ' the'
+[1698616580] sampled token:  1492: ' right'
+[1698616580] sampled token: 29889: '.'
+[1698616581] sampled token:     2: ''
+[1698616581] 
+[1698616581] print_timings: prompt eval time =    3754.72 ms /     1 tokens ( 3754.72 ms per token,     0.27 tokens per second)
+[1698616581] print_timings:        eval time =    1037.18 ms /    34 runs   (   30.51 ms per token,    32.78 tokens per second)
+[1698616581] print_timings:       total time =    4791.90 ms
+[1698616581] slot 0 released (36 tokens in cache)
+[1698616581] slot 0 - image loaded [id: 1] resolution (726 x 446)
+[1698616581] slot 0 is processing [task id: 1]
+[1698616581] slot 0 : kv cache rm - [0, end)
+[1698616581] slot 0 - encoding image [id: 1]
+[1698616584] sampled token:   450: ' The'
+[1698616584] sampled token:  1967: ' image'
+[1698616584] sampled token:  3697: ' shows'
+[1698616584] sampled token:  1023: ' two'
+[1698616584] sampled token: 22558: ' circles'
+[1698616584] sampled token:   411: ' with'
+[1698616584] sampled token: 26563: ' balls'
+[1698616584] sampled token:   297: ' in'
+[1698616584] sampled token:   278: ' the'
+[1698616584] sampled token:  4818: ' center'
+[1698616584] sampled token: 29892: ','
+[1698616584] sampled token:  1716: ' both'
+[1698616584] sampled token:  7180: ' placed'
+[1698616584] sampled token:   373: ' on'
+[1698616584] sampled token:  2246: ' top'
+[1698616584] sampled token:   310: ' of'
+[1698616584] sampled token:  1269: ' each'
+[1698616584] sampled token:   916: ' other'
+[1698616584] sampled token: 29889: '.'
+[1698616584] sampled token:  7806: ' Each'
+[1698616584] sampled token:  8607: ' circle'
+[1698616584] sampled token:  5680: ' features'
+[1698616584] sampled token:   263: ' a'
+[1698616585] sampled token:  2654: ' red'
+[1698616585] sampled token:  8607: ' circle'
+[1698616585] sampled token:   411: ' with'
+[1698616585] sampled token:   270: ' d'
+[1698616585] sampled token:  1862: 'ots'
+[1698616585] sampled token:   297: ' in'
+[1698616585] sampled token:   278: ' the'
+[1698616585] sampled token:  7256: ' middle'
+[1698616585] sampled token: 29892: ','
+[1698616585] sampled token:   322: ' and'
+[1698616585] sampled token:   278: ' the'
+[1698616585] sampled token: 26563: ' balls'
+[1698616585] sampled token:   526: ' are'
+[1698616585] sampled token:  7968: ' smaller'
+[1698616585] sampled token:  1135: ' than'
+[1698616585] sampled token:   278: ' the'
+[1698616585] sampled token: 22558: ' circles'
+[1698616585] sampled token:  6053: ' themselves'
+[1698616585] sampled token: 29889: '.'
+[1698616585] sampled token:   450: ' The'
+[1698616585] sampled token:  7200: ' larger'
+[1698616585] sampled token:  8607: ' circle'
+[1698616585] sampled token:   756: ' has'
+[1698616585] sampled token: 16749: ' gray'
+[1698616585] sampled token:   270: ' d'
+[1698616585] sampled token:  1862: 'ots'
+[1698616585] sampled token:  1550: ' while'
+[1698616585] sampled token:   278: ' the'
+[1698616585] sampled token:  7968: ' smaller'
+[1698616585] sampled token:   697: ' one'
+[1698616585] sampled token:   338: ' is'
+[1698616585] sampled token: 10200: ' decor'
+[1698616586] sampled token:   630: 'ated'
+[1698616586] sampled token:   411: ' with'
+[1698616586] sampled token: 24841: ' orange'
+[1698616586] sampled token:   270: ' d'
+[1698616586] sampled token:  1862: 'ots'
+[1698616586] sampled token: 29889: '.'
+[1698616586] sampled token:     2: ''
+[1698616586] 
+[1698616586] print_timings: prompt eval time =    3271.95 ms /     1 tokens ( 3271.95 ms per token,     0.31 tokens per second)
+[1698616586] print_timings:        eval time =    1892.16 ms /    61 runs   (   31.02 ms per token,    32.24 tokens per second)
+[1698616586] print_timings:       total time =    5164.11 ms
+[1698616586] slot 0 released (63 tokens in cache)
+[1698616586] slot 0 - image loaded [id: 1] resolution (674 x 474)
+[1698616586] slot 0 is processing [task id: 2]
+[1698616586] slot 0 : kv cache rm - [0, end)
+[1698616586] slot 0 - encoding image [id: 1]
+[1698616589] sampled token:   319: ' A'
+[1698616589] sampled token: 29871: ' '
+[1698616589] sampled token: 29941: '3'
+[1698616589] sampled token: 29928: 'D'
+[1698616589] sampled token: 17205: ' triangle'
+[1698616589] sampled token:   411: ' with'
+[1698616589] sampled token:   350: ' B'
+[1698616589] sampled token: 29892: ','
+[1698616589] sampled token: 29907: 'C'
+[1698616589] sampled token: 29892: ','
+[1698616589] sampled token:   322: ' and'
+[1698616589] sampled token:   360: ' D'
+[1698616589] sampled token:   297: ' in'
+[1698616589] sampled token:  7254: ' blue'
+[1698616589] sampled token: 22558: ' circles'
+[1698616590] sampled token: 29889: '.'
+[1698616590] sampled token:  1939: ' No'
+[1698616590] sampled token:  3983: ' graph'
+[1698616590] sampled token:  4318: ' shown'
+[1698616590] sampled token: 29889: '.'
+[1698616590] sampled token:     2: ''
+[1698616590] 
+[1698616590] print_timings: prompt eval time =    3346.41 ms /     1 tokens ( 3346.41 ms per token,     0.30 tokens per second)
+[1698616590] print_timings:        eval time =     597.86 ms /    20 runs   (   29.89 ms per token,    33.45 tokens per second)
+[1698616590] print_timings:       total time =    3944.27 ms
+[1698616590] slot 0 released (22 tokens in cache)
+[1698616590] slot 0 - image loaded [id: 1] resolution (1226 x 932)
+[1698616590] slot 0 is processing [task id: 3]
+[1698616590] slot 0 : kv cache rm - [0, end)
+[1698616590] slot 0 - encoding image [id: 1]
+[1698616593] sampled token:   450: ' The'
+[1698616593] sampled token:  8727: ' chart'
+[1698616593] sampled token:  3697: ' shows'
+[1698616593] sampled token: 10916: ' countries'
+[1698616593] sampled token:   393: ' that'
+[1698616593] sampled token:  1053: ' import'
+[1698616593] sampled token:   278: ' the'
+[1698616593] sampled token:  1556: ' most'
+[1698616593] sampled token:  6650: ' Gold'
+[1698616593] sampled token: 29892: ','
+[1698616593] sampled token: 16466: ' Silver'
+[1698616593] sampled token:  2519: 'ware'
+[1698616594] sampled token:   322: ' and'
+[1698616594] sampled token:  9576: ' Jew'
+[1698616594] sampled token:   295: 'el'
+[1698616594] sampled token:   719: 'ry'
+[1698616594] sampled token: 29889: '.'
+[1698616594] sampled token:     2: ''
+[1698616594] 
+[1698616594] print_timings: prompt eval time =    3439.41 ms /     1 tokens ( 3439.41 ms per token,     0.29 tokens per second)
+[1698616594] print_timings:        eval time =     503.79 ms /    17 runs   (   29.63 ms per token,    33.74 tokens per second)
+[1698616594] print_timings:       total time =    3943.20 ms
+[1698616594] slot 0 released (19 tokens in cache)
+[1698616638] slot 0 - image loaded [id: 1] resolution (726 x 446)
+[1698616638] slot 0 is processing [task id: 4]
+[1698616638] slot 0 : kv cache rm - [0, end)
+[1698616638] slot 0 - encoding image [id: 1]
+[1698616642] sampled token:   319: ' A'
+[1698616642] sampled token: 17354: ' brown'
+[1698616642] sampled token:  8607: ' circle'
+[1698616642] sampled token:   338: ' is'
+[1698616642] sampled token: 22047: ' surrounded'
+[1698616642] sampled token:   491: ' by'
+[1698616642] sampled token:  4796: ' white'
+[1698616642] sampled token: 22558: ' circles'
+[1698616642] sampled token: 29889: '.'
+[1698616642] sampled token:     2: ''
+[1698616642] 
+[1698616642] print_timings: prompt eval time =    3472.50 ms /     1 tokens ( 3472.50 ms per token,     0.29 tokens per second)
+[1698616642] print_timings:        eval time =     250.02 ms /     9 runs   (   27.78 ms per token,    36.00 tokens per second)
+[1698616642] print_timings:       total time =    3722.52 ms
+[1698616642] slot 0 released (11 tokens in cache)
+[1698616642] slot 0 - image loaded [id: 1] resolution (726 x 446)
+[1698616642] slot 0 is processing [task id: 5]
+[1698616642] slot 0 : kv cache rm - [0, end)
+[1698616642] slot 0 - encoding image [id: 1]
+[1698616645] sampled token:   450: ' The'
+[1698616645] sampled token:  1967: ' image'
+[1698616645] sampled token:  5680: ' features'
+[1698616645] sampled token:  1023: ' two'
+[1698616645] sampled token:  2919: ' large'
+[1698616645] sampled token:   270: ' d'
+[1698616645] sampled token:  1862: 'ots'
+[1698616645] sampled token:   373: ' on'
+[1698616645] sampled token:   263: ' a'
+[1698616645] sampled token:  4796: ' white'
+[1698616645] sampled token:  3239: ' background'
+[1698616646] sampled token: 29889: '.'
+[1698616646] sampled token:  4525: ' These'
+[1698616646] sampled token:   270: ' d'
+[1698616646] sampled token:  1862: 'ots'
+[1698616646] sampled token:  2615: ' appear'
+[1698616646] sampled token:   304: ' to'
+[1698616646] sampled token:   367: ' be'
+[1698616646] sampled token:   278: ' the'
+[1698616646] sampled token:  7601: ' primary'
+[1698616646] sampled token:  8569: ' focus'
+[1698616646] sampled token:   310: ' of'
+[1698616646] sampled token:   278: ' the'
+[1698616646] sampled token:  1967: ' image'
+[1698616646] sampled token: 29892: ','
+[1698616646] sampled token:   411: ' with'
+[1698616646] sampled token:   697: ' one'
+[1698616646] sampled token:  1641: ' being'
+[1698616646] sampled token:   901: ' more'
+[1698616646] sampled token: 19555: ' prominent'
+[1698616646] sampled token:   297: ' in'
+[1698616646] sampled token:  2159: ' size'
+[1698616646] sampled token:  1135: ' than'
+[1698616646] sampled token:   278: ' the'
+[1698616646] sampled token:   916: ' other'
+[1698616646] sampled token: 29889: '.'
+[1698616646] sampled token: 19814: ' Additionally'
+[1698616646] sampled token: 29892: ','
+[1698616646] sampled token:   727: ' there'
+[1698616646] sampled token:   526: ' are'
+[1698616646] sampled token:  3196: ' several'
+[1698616646] sampled token:  7968: ' smaller'
+[1698616646] sampled token:  4513: ' round'
+[1698616647] sampled token:  3618: ' objects'
+[1698616647] sampled token: 29574: ' scattered'
+[1698616647] sampled token: 10106: ' throughout'
+[1698616647] sampled token:   278: ' the'
+[1698616647] sampled token:  9088: ' scene'
+[1698616647] sampled token: 29889: '.'
+[1698616647] sampled token:  3118: ' One'
+[1698616647] sampled token:   310: ' of'
+[1698616647] sampled token:  1438: ' these'
+[1698616647] sampled token:  7968: ' smaller'
+[1698616647] sampled token:  4513: ' round'
+[1698616647] sampled token:  3618: ' objects'
+[1698616647] sampled token:   338: ' is'
+[1698616647] sampled token: 24046: ' situated'
+[1698616647] sampled token:  2978: ' near'
+[1698616647] sampled token:   278: ' the'
+[1698616647] sampled token:  5970: ' bottom'
+[1698616647] sampled token:  2175: ' left'
+[1698616647] sampled token: 11155: ' corner'
+[1698616647] sampled token:   310: ' of'
+[1698616647] sampled token:   278: ' the'
+[1698616647] sampled token:  1967: ' image'
+[1698616647] sampled token:   322: ' and'
+[1698616647] sampled token:  1790: ' another'
+[1698616647] sampled token:  7113: ' towards'
+[1698616647] sampled token:   278: ' the'
+[1698616647] sampled token:  2246: ' top'
+[1698616647] sampled token:  1492: ' right'
+[1698616647] sampled token:  2625: ' side'
+[1698616647] sampled token: 29889: '.'
+[1698616647] sampled token:   450: ' The'
+[1698616647] sampled token:  2319: ' small'
+[1698616648] sampled token:  4513: ' round'
+[1698616648] sampled token:  3161: ' elements'
+[1698616648] sampled token:  3867: ' provide'
+[1698616648] sampled token:   263: ' a'
+[1698616648] sampled token:  4060: ' sense'
+[1698616648] sampled token:   310: ' of'
+[1698616648] sampled token: 10809: ' depth'
+[1698616648] sampled token:   322: ' and'
+[1698616648] sampled token: 18459: ' texture'
+[1698616648] sampled token:   304: ' to'
+[1698616648] sampled token:   278: ' the'
+[1698616648] sampled token: 12463: ' overall'
+[1698616648] sampled token: 15259: ' composition'
+[1698616648] sampled token: 29889: '.'
+[1698616648] sampled token:     2: ''
+[1698616648] 
+[1698616648] print_timings: prompt eval time =    3375.61 ms /     1 tokens ( 3375.61 ms per token,     0.30 tokens per second)
+[1698616648] print_timings:        eval time =    2754.43 ms /    89 runs   (   30.95 ms per token,    32.31 tokens per second)
+[1698616648] print_timings:       total time =    6130.04 ms
+[1698616648] slot 0 released (91 tokens in cache)
+[1698616648] slot 0 - image loaded [id: 1] resolution (674 x 474)
+[1698616648] slot 0 is processing [task id: 6]
+[1698616648] slot 0 : kv cache rm - [0, end)
+[1698616648] slot 0 - encoding image [id: 1]
+[1698616651] sampled token:   319: ' A'
+[1698616651] sampled token: 29871: ' '
+[1698616651] sampled token: 29946: '4'
+[1698616651] sampled token: 29945: '5'
+[1698616651] sampled token:  7426: ' degree'
+[1698616651] sampled token: 10696: ' angle'
+[1698616651] sampled token: 17205: ' triangle'
+[1698616651] sampled token:   411: ' with'
+[1698616651] sampled token:   278: ' the'
+[1698616652] sampled token:  1298: ' point'
+[1698616652] sampled token:   310: ' of'
+[1698616652] sampled token: 17686: ' intersection'
+[1698616652] sampled token:   301: ' l'
+[1698616652] sampled token: 24025: 'abeled'
+[1698616652] sampled token:   376: ' "'
+[1698616652] sampled token: 29909: 'A'
+[1698616652] sampled token: 29908: '"'
+[1698616652] sampled token:   322: ' and'
+[1698616652] sampled token:   263: ' a'
+[1698616652] sampled token:  1196: ' line'
+[1698616652] sampled token: 23941: ' indicating'
+[1698616652] sampled token: 29871: ' '
+[1698616652] sampled token: 29941: '3'
+[1698616652] sampled token:  3291: ' points'
+[1698616652] sampled token: 29889: '.'
+[1698616652] sampled token:     2: ''
+[1698616652] 
+[1698616652] print_timings: prompt eval time =    3263.70 ms /     1 tokens ( 3263.70 ms per token,     0.31 tokens per second)
+[1698616652] print_timings:        eval time =     755.91 ms /    25 runs   (   30.24 ms per token,    33.07 tokens per second)
+[1698616652] print_timings:       total time =    4019.61 ms
+[1698616652] slot 0 released (27 tokens in cache)
+[1698616652] slot 0 - image loaded [id: 1] resolution (1226 x 932)
+[1698616652] slot 0 is processing [task id: 7]
+[1698616652] slot 0 : kv cache rm - [0, end)
+[1698616652] slot 0 - encoding image [id: 1]
+[1698616655] sampled token:   319: ' A'
+[1698616655] sampled token:  2594: ' bar'
+[1698616655] sampled token:  3983: ' graph'
+[1698616655] sampled token:  3697: ' shows'
+[1698616655] sampled token:   501: ' U'
+[1698616655] sampled token: 29889: '.'
+[1698616655] sampled token: 29903: 'S'
+[1698616656] sampled token: 29889: '.'
+[1698616656] sampled token: 11232: ' doll'
+[1698616656] sampled token:   279: 'ar'
+[1698616656] sampled token:   995: ' value'
+[1698616656] sampled token:   310: ' of'
+[1698616656] sampled token: 24802: ' imports'
+[1698616656] sampled token:   515: ' from'
+[1698616656] sampled token:  7551: ' China'
+[1698616656] sampled token: 29892: ','
+[1698616656] sampled token:   278: ' the'
+[1698616656] sampled token:  3303: ' United'
+[1698616656] sampled token: 10387: ' Arab'
+[1698616656] sampled token:  2812: ' Em'
+[1698616656] sampled token:   381: 'ir'
+[1698616656] sampled token:  1078: 'ates'
+[1698616656] sampled token:   322: ' and'
+[1698616656] sampled token:  5546: ' Japan'
+[1698616656] sampled token:   297: ' in'
+[1698616656] sampled token: 29871: ' '
+[1698616656] sampled token: 29906: '2'
+[1698616656] sampled token: 29900: '0'
+[1698616656] sampled token: 29896: '1'
+[1698616656] sampled token: 29947: '8'
+[1698616656] sampled token:   471: ' was'
+[1698616656] sampled token:   395: ' $'
+[1698616656] sampled token: 29906: '2'
+[1698616656] sampled token: 29945: '5'
+[1698616656] sampled token: 29892: ','
+[1698616656] sampled token: 29900: '0'
+[1698616657] sampled token: 29946: '4'
+[1698616657] sampled token: 29896: '1'
+[1698616657] sampled token: 29892: ','
+[1698616657] sampled token: 29929: '9'
+[1698616657] sampled token: 29941: '3'
+[1698616657] sampled token: 29946: '4'
+[1698616657] sampled token: 29892: ','
+[1698616657] sampled token: 29906: '2'
+[1698616657] sampled token: 29945: '5'
+[1698616657] sampled token: 29953: '6'
+[1698616657] sampled token: 29889: '.'
+[1698616657] sampled token:     2: ''
+[1698616657] 
+[1698616657] print_timings: prompt eval time =    3257.82 ms /     1 tokens ( 3257.82 ms per token,     0.31 tokens per second)
+[1698616657] print_timings:        eval time =    1619.19 ms /    47 runs   (   34.45 ms per token,    29.03 tokens per second)
+[1698616657] print_timings:       total time =    4877.00 ms
+[1698616657] slot 0 released (49 tokens in cache)
+[1698617204] slot 0 - image loaded [id: 1] resolution (726 x 446)
+[1698617204] slot 0 is processing [task id: 8]
+[1698617204] slot 0 : kv cache rm - [0, end)
+[1698617204] slot 0 - encoding image [id: 1]
+[1698617207] sampled token: 12458: ' Four'
+[1698617207] sampled token: 18345: ' grey'
+[1698617207] sampled token: 22558: ' circles'
+[1698617207] sampled token:   411: ' with'
+[1698617207] sampled token: 24841: ' orange'
+[1698617207] sampled token:  1644: ' cent'
+[1698617207] sampled token:   414: 'ers'
+[1698617207] sampled token: 29889: '.'
+[1698617208] sampled token:     2: ''
+[1698617208] 
+[1698617208] print_timings: prompt eval time =    3584.76 ms /     1 tokens ( 3584.76 ms per token,     0.28 tokens per second)
+[1698617208] print_timings:        eval time =     218.59 ms /     8 runs   (   27.32 ms per token,    36.60 tokens per second)
+[1698617208] print_timings:       total time =    3803.36 ms
+[1698617208] slot 0 released (10 tokens in cache)
+[1698617208] slot 0 - image loaded [id: 1] resolution (726 x 446)
+[1698617208] slot 0 is processing [task id: 9]
+[1698617208] slot 0 : kv cache rm - [0, end)
+[1698617208] slot 0 - encoding image [id: 1]
+[1698617211] sampled token:  7803: ' Two'
+[1698617211] sampled token: 22558: ' circles'
+[1698617211] sampled token:   411: ' with'
+[1698617211] sampled token:   263: ' a'
+[1698617211] sampled token:  4628: ' black'
+[1698617211] sampled token:  8329: ' dot'
+[1698617211] sampled token:   297: ' in'
+[1698617211] sampled token:   278: ' the'
+[1698617211] sampled token:  7256: ' middle'
+[1698617211] sampled token: 29889: '.'
+[1698617211] sampled token:     2: ''
+[1698617211] 
+[1698617211] print_timings: prompt eval time =    3397.84 ms /     1 tokens ( 3397.84 ms per token,     0.29 tokens per second)
+[1698617211] print_timings:        eval time =     282.58 ms /    10 runs   (   28.26 ms per token,    35.39 tokens per second)
+[1698617211] print_timings:       total time =    3680.42 ms
+[1698617211] slot 0 released (12 tokens in cache)
+[1698617211] slot 0 - image loaded [id: 1] resolution (674 x 474)
+[1698617211] slot 0 is processing [task id: 10]
+[1698617211] slot 0 : kv cache rm - [0, end)
+[1698617211] slot 0 - encoding image [id: 1]
+[1698617215] sampled token:   319: ' A'
+[1698617215] sampled token:  7254: ' blue'
+[1698617215] sampled token:  1196: ' line'
+[1698617215] sampled token:  4511: ' connect'
+[1698617215] sampled token: 29879: 's'
+[1698617215] sampled token:   315: ' C'
+[1698617215] sampled token: 29892: ','
+[1698617215] sampled token:   350: ' B'
+[1698617215] sampled token:   322: ' and'
+[1698617215] sampled token:   278: ' the'
+[1698617215] sampled token:  2654: ' red'
+[1698617215] sampled token:  3694: ' numbers'
+[1698617215] sampled token: 29871: ' '
+[1698617215] sampled token: 29946: '4'
+[1698617215] sampled token: 29889: '.'
+[1698617215] sampled token:     2: ''
+[1698617215] 
+[1698617215] print_timings: prompt eval time =    3322.09 ms /     1 tokens ( 3322.09 ms per token,     0.30 tokens per second)
+[1698617215] print_timings:        eval time =     436.93 ms /    15 runs   (   29.13 ms per token,    34.33 tokens per second)
+[1698617215] print_timings:       total time =    3759.01 ms
+[1698617215] slot 0 released (17 tokens in cache)
+[1698617215] slot 0 - image loaded [id: 1] resolution (1226 x 932)
+[1698617215] slot 0 is processing [task id: 11]
+[1698617215] slot 0 : kv cache rm - [0, end)
+[1698617215] slot 0 - encoding image [id: 1]
+[1698617218] sampled token: 14477: ' Chart'
+[1698617218] sampled token:  3697: ' shows'
+[1698617218] sampled token:   278: ' the'
+[1698617218] sampled token:   995: ' value'
+[1698617218] sampled token:   310: ' of'
+[1698617219] sampled token: 24802: ' imports'
+[1698617219] sampled token:   322: ' and'
+[1698617219] sampled token: 29586: ' exports'
+[1698617219] sampled token:   304: ' to'
+[1698617219] sampled token:  1422: ' different'
+[1698617219] sampled token: 10916: ' countries'
+[1698617219] sampled token: 29889: '.'
+[1698617219] sampled token:     2: ''
+[1698617219] 
+[1698617219] print_timings: prompt eval time =    3337.22 ms /     1 tokens ( 3337.22 ms per token,     0.30 tokens per second)
+[1698617219] print_timings:        eval time =     341.95 ms /    12 runs   (   28.50 ms per token,    35.09 tokens per second)
+[1698617219] print_timings:       total time =    3679.17 ms
+[1698617219] slot 0 released (14 tokens in cache)
+[1698617903] slot 0 - image loaded [id: 1] resolution (726 x 446)
+[1698617903] slot 0 is processing [task id: 12]
+[1698617903] slot 0 : kv cache rm - [0, end)
+[1698617903] slot 0 - encoding image [id: 1]
+[1698617907] sampled token: 26048: ' Orange'
+[1698617907] sampled token:  8329: ' dot'
+[1698617907] sampled token:  2768: ' inside'
+[1698617907] sampled token:   310: ' of'
+[1698617907] sampled token: 18345: ' grey'
+[1698617907] sampled token:  8607: ' circle'
+[1698617907] sampled token: 29889: '.'
+[1698617907] sampled token:     2: ''
+[1698617907] 
+[1698617907] print_timings: prompt eval time =    3474.75 ms /     1 tokens ( 3474.75 ms per token,     0.29 tokens per second)
+[1698617907] print_timings:        eval time =     188.18 ms /     7 runs   (   26.88 ms per token,    37.20 tokens per second)
+[1698617907] print_timings:       total time =    3662.93 ms
+[1698617907] slot 0 released (9 tokens in cache)
+[1698617907] slot 0 - image loaded [id: 1] resolution (726 x 446)
+[1698617907] slot 0 is processing [task id: 13]
+[1698617907] slot 0 : kv cache rm - [0, end)
+[1698617907] slot 0 - encoding image [id: 1]
+[1698617911] sampled token:  7803: ' Two'
+[1698617911] sampled token: 22558: ' circles'
+[1698617911] sampled token: 29892: ','
+[1698617911] sampled token:   697: ' one'
+[1698617911] sampled token: 16749: ' gray'
+[1698617911] sampled token:   322: ' and'
+[1698617911] sampled token:   697: ' one'
+[1698617911] sampled token: 24841: ' orange'
+[1698617911] sampled token: 29892: ','
+[1698617911] sampled token:  2446: ' next'
+[1698617911] sampled token:   304: ' to'
+[1698617911] sampled token:  1269: ' each'
+[1698617911] sampled token:   916: ' other'
+[1698617911] sampled token: 29889: '.'
+[1698617911] sampled token:     2: ''
+[1698617911] 
+[1698617911] print_timings: prompt eval time =    3484.16 ms /     1 tokens ( 3484.16 ms per token,     0.29 tokens per second)
+[1698617911] print_timings:        eval time =     407.89 ms /    14 runs   (   29.14 ms per token,    34.32 tokens per second)
+[1698617911] print_timings:       total time =    3892.06 ms
+[1698617911] slot 0 released (16 tokens in cache)
+[1698617911] slot 0 - image loaded [id: 1] resolution (674 x 474)
+[1698617911] slot 0 is processing [task id: 14]
+[1698617911] slot 0 : kv cache rm - [0, end)
+[1698617911] slot 0 - encoding image [id: 1]
+[1698617914] sampled token:   319: ' A'
+[1698617914] sampled token: 13722: ' diagram'
+[1698617914] sampled token:   310: ' of'
+[1698617914] sampled token:   263: ' a'
+[1698617914] sampled token:  1492: ' right'
+[1698617915] sampled token:  2614: ' ang'
+[1698617915] sampled token:   839: 'led'
+[1698617915] sampled token: 17205: ' triangle'
+[1698617915] sampled token: 29889: '.'
+[1698617915] sampled token:     2: ''
+[1698617915] 
+[1698617915] print_timings: prompt eval time =    3358.60 ms /     1 tokens ( 3358.60 ms per token,     0.30 tokens per second)
+[1698617915] print_timings:        eval time =     251.66 ms /     9 runs   (   27.96 ms per token,    35.76 tokens per second)
+[1698617915] print_timings:       total time =    3610.26 ms
+[1698617915] slot 0 released (11 tokens in cache)
+[1698617915] slot 0 - image loaded [id: 1] resolution (1226 x 932)
+[1698617915] slot 0 is processing [task id: 15]
+[1698617915] slot 0 : kv cache rm - [0, end)
+[1698617915] slot 0 - encoding image [id: 1]
+[1698617918] sampled token:   450: ' The'
+[1698617918] sampled token:  3983: ' graph'
+[1698617918] sampled token:  3697: ' shows'
+[1698617918] sampled token:   278: ' the'
+[1698617918] sampled token:  8236: ' leading'
+[1698617918] sampled token:  1053: ' import'
+[1698617918] sampled token:  5609: ' export'
+[1698617918] sampled token: 10916: ' countries'
+[1698617918] sampled token:   310: ' of'
+[1698617918] sampled token:  7684: ' gold'
+[1698617918] sampled token: 29892: ','
+[1698617918] sampled token: 13283: ' silver'
+[1698617918] sampled token:  2519: 'ware'
+[1698617918] sampled token:   322: ' and'
+[1698617918] sampled token:   432: ' j'
+[1698617918] sampled token:   809: 'ew'
+[1698617919] sampled token:   295: 'el'
+[1698617919] sampled token:   719: 'ry'
+[1698617919] sampled token:  3186: ' world'
+[1698617919] sampled token:  8157: 'wide'
+[1698617919] sampled token:   297: ' in'
+[1698617919] sampled token: 29871: ' '
+[1698617919] sampled token: 29906: '2'
+[1698617919] sampled token: 29900: '0'
+[1698617919] sampled token: 29896: '1'
+[1698617919] sampled token: 29947: '8'
+[1698617919] sampled token: 29889: '.'
+[1698617919] sampled token:  7551: ' China'
+[1698617919] sampled token:   338: ' is'
+[1698617919] sampled token:   373: ' on'
+[1698617919] sampled token:  2246: ' top'
+[1698617919] sampled token:   411: ' with'
+[1698617919] sampled token:   395: ' $'
+[1698617919] sampled token: 29929: '9'
+[1698617919] sampled token: 29889: '.'
+[1698617919] sampled token: 29955: '7'
+[1698617919] sampled token: 24464: ' billion'
+[1698617919] sampled token:  7088: ' worth'
+[1698617919] sampled token:   310: ' of'
+[1698617919] sampled token: 24802: ' imports'
+[1698617919] sampled token: 29889: '.'
+[1698617919] sampled token:     2: ''
+[1698617919] 
+[1698617919] print_timings: prompt eval time =    3375.54 ms /     1 tokens ( 3375.54 ms per token,     0.30 tokens per second)
+[1698617919] print_timings:        eval time =    1249.88 ms /    41 runs   (   30.48 ms per token,    32.80 tokens per second)
+[1698617919] print_timings:       total time =    4625.43 ms
+[1698617919] slot 0 released (43 tokens in cache)

@@ -61,6 +61,8 @@ python source/auto-alt-text-pptx-llava.py tmp/test.pptx --add
 python source/auto-alt-text-pptx-llava.py tmp/test.pptx --add --prompt "Describe in simple words"
 ```
 
+## OpenCLIP
+
 No server is needed when using the [OpenCLIP](https://github.com/mlfoundations/open_clip) version of the Python script. Model will be downloaded the first time it is used.
 
 ```sh

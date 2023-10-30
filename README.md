@@ -74,6 +74,6 @@ python source/auto-alt-text-pptx-openclip.py tmp/test.pptx
 # and a new powerpoint file is saved with the new alt text as '<name>_alt_text.pptx'
 python source/auto-alt-text-pptx-openclip.py tmp/test.pptx --add
 
-# specify model and pretained
+# specify specific model and pretained model
 python source/auto-alt-text-pptx-openclip.py tmp/test.pptx --add --model coca_ViT-L-14 --pretrained mscoco_finetuned_laion2B-s13B-b90k
 ```

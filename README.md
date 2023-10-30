@@ -58,7 +58,8 @@ Add alt text using LLaVA. Note that the script also saves each image in the Powe
 # and a new powerpoint file is saved with the new alt text as '<name>_alt_text.pptx'
 python source/auto-alt-text-pptx-llava.py tmp/test.pptx --add
 
-python source/auto-alt-text-pptx-llava.py tmp/test.pptx --add --prompt "Describe in simple words"
+# specify a different prompt
+python source/auto-alt-text-pptx-llava.py tmp/test.pptx --add --prompt "Describe in simple words using maximal 125 characters"
 ```
 
 ## OpenCLIP

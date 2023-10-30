@@ -1,6 +1,6 @@
 # Auto-Alt-Text
 
-Automatically create alt-text for images in Powerpoint files using [LLaVA](https://llava-vl.github.io) or [OpenClip](https://github.com/mlfoundations/open_clip).
+Automatically create alt-text for images in Powerpoint files using [LLaVA](https://llava-vl.github.io) or [OpenCLIP](https://github.com/mlfoundations/open_clip).
 
 ## Setup
 
@@ -58,7 +58,7 @@ python source/auto-alt-text-pptx-llava.py tmp/test.pptx --add
 python source/auto-alt-text-pptx-llava.py tmp/test.pptx --add --prompt "Describe in simple words"
 ```
 
-No server is needed when using the [OpenClip](https://github.com/mlfoundations/open_clip) version of the Python script. Model will be downloaded the first time it is used.
+No server is needed when using the [OpenCLIP](https://github.com/mlfoundations/open_clip) version of the Python script. Model will be downloaded the first time it is used.
 
 ```sh
 python source/auto-alt-text-pptx-openclip.py tmp/test.pptx

@@ -1,5 +1,5 @@
 """
-Add automatically alt text to each picture in a powerpoint file using OpenClip
+Add automatically alt text to each picture in a powerpoint file using OpenCLIP
 """
 
 import os
@@ -61,6 +61,7 @@ def process_images_from_pptx(file_path: str, set_image_description: bool, model_
 
     nr_slides = len(prs.slides)
 
+    # OpenCLIP model
     if set_image_description:
         model, _, transform = open_clip.create_model_and_transforms(
             model_name=model_name,

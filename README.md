@@ -20,7 +20,7 @@ python source/auto-alt-text-pptx-llava.py tmp/test.pptx
 # output is also written to `tmp/test.txt`
 ```
 
-## Set up LLaVA server (only required for LLaVA version)
+## Set up LLaVA local server (only required when using `auto-alt-text-pptx-llava.py` script)
 
 Set up LLaVA server so that the Python script can use this server to obtain descriptions of each image. Script will set the alt text based on the descriptions provided by LLaVA.
 

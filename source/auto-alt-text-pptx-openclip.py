@@ -156,7 +156,7 @@ def main(argv: List[str]) -> int:
     parser.add_argument("file", type=str, help="Powerpoint file")
     parser.add_argument("--add", action='store_true', default=False, help="flag to add alt-text to images")
     parser.add_argument("--model", type=str, default="coca_ViT-L-14", help="model name")
-    parser.add_argument("--pretrained", type=str, default="mscoco_finetuned_laion2B-s13B-b90k", help="pretrained parameters")
+    parser.add_argument("--pretrained", type=str, default="mscoco_finetuned_laion2B-s13B-b90k", help="pretrained model")
     parser.add_argument("--debug", action='store_true', default=False, help="debug")
 
     args = parser.parse_args()

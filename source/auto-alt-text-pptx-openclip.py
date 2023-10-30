@@ -63,7 +63,7 @@ def process_images_from_pptx(file_path: str, set_image_description: bool, model_
 
     # OpenCLIP model
     if set_image_description:
-        print(f"OpenCLIP model: {modelname}, pretrained: {pretrained}")
+        print(f"OpenCLIP model: {model_name}, pretrained: {pretrained}")
         model, _, transform = open_clip.create_model_and_transforms(
             model_name=model_name,
             pretrained=pretrained

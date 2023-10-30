@@ -63,6 +63,7 @@ def process_images_from_pptx(file_path: str, set_image_description: bool, model_
 
     # OpenCLIP model
     if set_image_description:
+        print("OpenCLIP model: {modelname}, pretrained: {pretrained}")
         model, _, transform = open_clip.create_model_and_transforms(
             model_name=model_name,
             pretrained=pretrained
@@ -136,7 +137,10 @@ def set_alt_text(shape: BaseShape, slide_cnt: int, max_slides: int, image_cnt: i
             generated = model.generate(im)
 
         # get picture description and remove trailing spaces
-        alt_text = open_clip.decode(generated[0]).split("<end_of_text>")[0].replace("<start_of_text>", "")
+        alt_text = open_clip.decode(generated[0]).split("<end_of_text>")[0].replace("<start_of_text>", "").strip()
+
+        # remove space before '.'
+        alt_text = alt_text.replace(' .', '.')
 
         if DEBUG:
             print(f"Len: {len(alt_text)}, Content: {alt_text}")

@@ -1,5 +1,5 @@
 """
-Add automatically alt text to each picture in a powerpoint file
+Add automatically alt text to each picture in a powerpoint file using LLaVA
 """
 
 import os

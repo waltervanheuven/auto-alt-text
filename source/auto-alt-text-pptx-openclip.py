@@ -1,5 +1,5 @@
 """
-Add automatically alt text to each picture in a powerpoint file
+Add automatically alt text to each picture in a powerpoint file using OpenClip
 """
 
 import os
@@ -39,7 +39,7 @@ def shape_set_alt_text(shape: BaseShape, alt_text: str):
 def process_images_from_pptx(file_path: str, set_image_description: bool, model_name: str, pretrained: str, DEBUG: bool = False) -> bool:
     """ 
     Loop through images in the slides of a Powerpint file and set image description based 
-    on image description from Llava
+    on image description from OpenClip
     """
     err: bool = False
     file_name:str = os.path.basename(file_path)

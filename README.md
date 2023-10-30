@@ -15,7 +15,7 @@ pip install -r requirements.txt
 Show images and current alt text in Powerpoint file. Python script also creates a `txt` file with the alt text of each image in the powerpoint file.
 
 ```sh
-python source/auto-alt-text-pptx.py tmp/test.pptx
+python source/auto-alt-text-pptx-llava.py tmp/test.pptx
 
 # output is also written to `tmp/test.txt`
 ```

@@ -1,6 +1,6 @@
 """
 Add automatically alt text to each picture in a powerpoint file 
-using LLaVA, OpenCLIP, or ChatGPT
+using LLaVA, OpenCLIP, or GPT4
 """
 
 import os

@@ -27,18 +27,22 @@ If you want to use LLaVA to generate image descriptions, you need to set up a LL
 Steps to set up a local LLaVA server:
 
 ```sh
-# clone llama.cpp repository
+# clone llama.cpp repository in a tmp folder
+mkdir tmp
+cd tmp
 git clone https://github.com/ggerganov/llama.cpp.git
 
 # build
+cd llama.cpp
 make
 
 # create folder `llama.cpp` in main folder `auto-alt-text`
+cd ..
 mkdir llama.cpp
 mkdir llama.cpp/models
 ```
 
-Copy `server` from `llama.cpp` directory to `llama.cpp` within the folder `auto-alt-text`. For Metal on macOS also copy `ggml-metal.metal` to the folder `llama.cpp`.
+Copy `server` from the `tmp/llama.cpp/` folder to `llama.cpp` within the folder `auto-alt-text`. For Metal on macOS also copy `ggml-metal.metal` to the folder `llama.cpp`.
 
 Models for [LLaVA](https://llava-vl.github.io) can be found on huggingface: [https://huggingface.co/mys/ggml_llava-v1.5-7b/tree/main](https://huggingface.co/mys/ggml_llava-v1.5-7b/tree/main)
 

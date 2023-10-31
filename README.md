@@ -36,22 +36,22 @@ git clone https://github.com/ggerganov/llama.cpp.git
 cd llama.cpp
 make
 
-# create folder `llama.cpp` in main folder `auto-alt-text`
+# create folder `llava` in main folder `auto-alt-text`
 cd ..
-mkdir llama.cpp
-mkdir llama.cpp/models
+mkdir llava
+mkdir llava/models
 ```
 
-Copy `server` from the `tmp/llama.cpp/` folder to `llama.cpp` within the folder `auto-alt-text`. For Metal on macOS also copy `ggml-metal.metal` to the folder `llama.cpp`.
+Copy `server` from the `tmp/llama.cpp/` folder to the `llava` folder. For Metal on macOS also copy `ggml-metal.metal` that can be found in `tmp/llama.cpp/` to the folder `llava`.
 
 Models for [LLaVA](https://llava-vl.github.io) can be found on huggingface: [https://huggingface.co/mys/ggml_llava-v1.5-7b/tree/main](https://huggingface.co/mys/ggml_llava-v1.5-7b/tree/main)
 
-Download `ggml-model-q5_k.gguf` and `mmproj-model-f16.gguf` and move the files to the folder `models` in the folder `llama.cpp`.
+Download `ggml-model-q5_k.gguf` and `mmproj-model-f16.gguf` and move the files to the folder `models` in the folder `llava`.
 
 Start local server:
 
 ```sh
-./llama.cpp/server -t 4 -c 4096 -ngl 50 -m llama.cpp/models/ggml-model-q5_k.gguf --host 0.0.0.0 --port 8007 --mmproj llama.cpp/models/mmproj-model-f16.gguf
+./llava/server -t 4 -c 4096 -ngl 50 -m llava/models/ggml-model-q5_k.gguf --host 0.0.0.0 --port 8007 --mmproj llava/models/mmproj-model-f16.gguf
 ```
 
 ```sh

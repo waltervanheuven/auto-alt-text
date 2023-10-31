@@ -2,4 +2,5 @@
 tmp/*
 venv/*
 llama.cpp/*
+llava/*
 *.log

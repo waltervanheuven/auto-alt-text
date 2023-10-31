@@ -3,3 +3,4 @@ Pillow
 requests
 open_clip_torch
 transformers
+#openai

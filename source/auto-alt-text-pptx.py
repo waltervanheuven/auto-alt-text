@@ -66,19 +66,32 @@ def process_images_from_pptx(file_path: str, generate: bool, settings: dict, sav
     print(f"Reading '{file_path}'")
     prs = Presentation(file_path)
     
-    # Write alt-text to file
-    out_file_name:str = os.path.join(dirname, f"{name}_{settings['model_type']}.txt")
-    fout = open(out_file_name, "w")
-    # write header
-    fout.write(f"Model\tPowerpoint\tSlide\tPicture\tAlt_Text{os.linesep}")
+    model_type:str = settings['model_type']
 
+    # set output file name
+    out_file_name:str = ""
+    if model_type != "" and generate:
+        out_file_name = os.path.join(dirname, f"{name}_{model_type}.txt")
+    else:
+        out_file_name = os.path.join(dirname, f"{name}.txt")
+    
     nr_slides = len(prs.slides)
 
     # download and/or set up model
-    err = init_model(settings)
-    if err:
-        print("Unable to init model.")
-        return err
+    if generate:
+        err = init_model(settings)
+        if err:
+            print("Unable to init model.")
+            return err
+
+    # open file for writing
+    fout = open(out_file_name, "w")
+
+    # write header
+    if model_type != "" and generate:
+        fout.write(f"Model\tFile\tSlide\tPicture\tAlt_Text{os.linesep}")
+    else:
+        fout.write(f"File\tSlide\tPicture\tAlt_Text{os.linesep}")
 
     # Loop through slides
     slide_cnt:int = 1
@@ -98,13 +111,18 @@ def process_images_from_pptx(file_path: str, generate: bool, settings: dict, sav
                     stored_alt_text:str = shape_get_alt_text(shape)
                     feedback = f"Slide: {slide_cnt}, Picture: '{shape.name}', alt_text: '{stored_alt_text}'"
                     print(feedback)
-                    fout.write(f"{settings['model_type']}\t{name}.{extension}\t{slide_cnt}\t{shape.name}\t{stored_alt_text}" + os.linesep)
+
+                    if model_type == "":
+                        fout.write(f"{name}.{extension}\t{slide_cnt}\t{shape.name}\t{stored_alt_text}" + os.linesep)
+                    else:
+                        fout.write(f"{model_type}\t{name}.{extension}\t{slide_cnt}\t{shape.name}\t{stored_alt_text}" + os.linesep)
 
                     slide_image_cnt += 1
                     image_cnt += 1
 
         slide_cnt += 1
 
+    # close output file
     fout.close()
 
     slide_cnt -= 1
@@ -121,14 +139,15 @@ def process_images_from_pptx(file_path: str, generate: bool, settings: dict, sav
 
 def init_model(settings: dict) -> bool:
     err: bool = False
+    model_type:str = settings["model_type"]
 
-    if settings["model_type"] == "kosmos-2":
+    if model_type == "kosmos-2":
         # Kosmos-2 model
         model_name:str = "microsoft/kosmos-2-patch14-224"
         print(f"Kosmos-2 model: '{model_name}'")
         settings["kosmos2-model"] = AutoModelForVision2Seq.from_pretrained(model_name)
         settings["kosmos2-processor"] = AutoProcessor.from_pretrained(model_name)
-    elif settings["model_type"] == "openclip":
+    elif model_type == "openclip":
         print(f"OpenCLIP model: '{settings['openclip_model_name']}'\npretrained: '{settings['openclip_pretrained']}'")
         model, _, transform = open_clip.create_model_and_transforms(
             model_name=settings["openclip_model_name"],
@@ -136,7 +155,7 @@ def init_model(settings: dict) -> bool:
         )
         settings["openclip-model"] = model
         settings["openclip-transform"] = transform
-    elif settings["model_type"] == "llava":
+    elif model_type == "llava":
         server_url = settings["llava_url"]
         if check_server_is_running(server_url):
             server_url = f"{server_url}/completion"
@@ -144,6 +163,9 @@ def init_model(settings: dict) -> bool:
         else:
             print(f"Unable to access server at '{server_url}'.")
             err = True
+    else:
+        print(f"Unknown model: '{model_type}'")
+        err = True
 
     return err
 
@@ -274,7 +296,7 @@ def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(description='Add alt-text automatically to images in Powerpoint')
     parser.add_argument("file", type=str, help="Powerpoint file")
     parser.add_argument("--generate", action='store_true', default=False, help="flag to generate alt-text to images")
-    parser.add_argument("--type", type=str, default="openclip", help="Model type: openclip, llava server, kosmos, gpt4")
+    parser.add_argument("--type", type=str, default="", help="Model type: openclip, llava server, kosmos, gpt4")
     # LLaVA
     parser.add_argument("--prompt", type=str, default=default_llava_prompt, help="LLaVA prompt")
     parser.add_argument("--server", type=str, default="http://localhost", help="LLaVA server URL")

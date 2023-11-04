@@ -408,11 +408,11 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--server", type=str, default="http://localhost", help="LLaVA server URL")
     parser.add_argument("--port", type=str, default="8007", help="LLaVA server port")
     # OpenCLIP
-    parser.add_argument("--model", type=str, default="coca_ViT-L-14", help="model name")
-    parser.add_argument("--pretrained", type=str, default="mscoco_finetuned_laion2B-s13B-b90k", help="pretrained model")
+    parser.add_argument("--model", type=str, default="coca_ViT-L-14", help="OpenCLIP model name")
+    parser.add_argument("--pretrained", type=str, default="mscoco_finetuned_laion2B-s13B-b90k", help="OpenCLIP pretrained model")
     #
-    parser.add_argument("--save", action='store_true', default=False, help="Save powerpoint file")
-    parser.add_argument("--add_from_file", type=str, default="", help="Add alt text from specified file to powerpoint file")
+    parser.add_argument("--save", action='store_true', default=False, help="save powerpoint file with updated alt texts")
+    parser.add_argument("--add_from_file", type=str, default="", help="Add alt texts from specified file to powerpoint file")
     #
     parser.add_argument("--debug", action='store_true', default=False, help="debug")
 

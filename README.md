@@ -112,3 +112,11 @@ The generated alt text is saved to a text file so that it can be edited. You can
 ```sh
 python source/auto-alt-text-pptx.py tmp/test.pptx --add_from_file tmp/test_kosmos-2_edited.txt
 ```
+
+## Help
+
+Command options are provided when adding --help
+
+```sh
+python source/auto-alt-text-pptx.py --help
+```

@@ -1,6 +1,6 @@
 # Auto-Alt-Text
 
-Automatically create `Alt Text` for images in Powerpoint presentations using multimodal large language models, such as [Kosmos-2](https://github.com/microsoft/unilm/tree/master/kosmos-2) and [LLaVA](https://llava-vl.github.io), or Contrastive Language-Image Pre-training models, such as [OpenCLIP](https://github.com/mlfoundations/open_clip). The Python script will create a text file with the generated `Alt Text` as well as apply these to the images in the PowerPoint file and save the updated Powerpoint to a new file.
+Automatically create `Alt Text` for images in Powerpoint presentations using Multimodal Large Language Models (MLLM), such as [Kosmos-2](https://github.com/microsoft/unilm/tree/master/kosmos-2) and [LLaVA](https://llava-vl.github.io), or Visual-Language (VL) pre-trained models, such as [OpenCLIP](https://github.com/mlfoundations/open_clip). The Python script will create a text file with the generated `Alt Text` as well as apply these to the images in the PowerPoint file and save the updated Powerpoint to a new file.
 
 Please note that the Python script has been tested so far only on macOS (M1 MacBook Pro). However, it should also work on Windows and Linux. The models used run all locally.
 

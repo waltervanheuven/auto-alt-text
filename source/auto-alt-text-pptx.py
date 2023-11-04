@@ -73,7 +73,7 @@ def isDecorative(shape):
 def process_images_from_pptx(file_path: str, generate: bool, settings: dict, savePP: bool, DEBUG: bool = False) -> bool:
     """ 
     Loop through images in the slides of a Powerpint file and set image description based 
-    on image description from OpenCLIP
+    on image description from Kosmos-2, OpenCLIP, or LLaVA
     """
     err: bool = False
 
@@ -175,6 +175,7 @@ def init_model(settings: dict) -> bool:
         settings["kosmos2-model"] = AutoModelForVision2Seq.from_pretrained(model_name)
         settings["kosmos2-processor"] = AutoProcessor.from_pretrained(model_name)
     elif model_type == "openclip":
+        # OpenCLIP
         print(f"OpenCLIP model: '{settings['openclip_model_name']}'\npretrained: '{settings['openclip_pretrained']}'")
         model, _, transform = open_clip.create_model_and_transforms(
             model_name=settings["openclip_model_name"],
@@ -183,6 +184,7 @@ def init_model(settings: dict) -> bool:
         settings["openclip-model"] = model
         settings["openclip-transform"] = transform
     elif model_type == "llava":
+        # LLaVA
         server_url = settings["llava_url"]
         if check_server_is_running(server_url):
             server_url = f"{server_url}/completion"

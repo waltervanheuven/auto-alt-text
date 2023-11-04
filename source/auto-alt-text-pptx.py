@@ -402,19 +402,19 @@ def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(description='Add alt-text automatically to images in Powerpoint')
     parser.add_argument("file", type=str, help="Powerpoint file")
     parser.add_argument("--generate", action='store_true', default=False, help="flag to generate alt-text to images")
-    parser.add_argument("--type", type=str, default="", help="Model type: openclip, llava server, kosmos, gpt4")
+    parser.add_argument("--type", type=str, default="", help="Model type: kosmos-2, openclip, llava")
     # LLaVA
     parser.add_argument("--prompt", type=str, default=default_llava_prompt, help="LLaVA prompt")
-    parser.add_argument("--server", type=str, default="http://localhost", help="LLaVA server URL")
-    parser.add_argument("--port", type=str, default="8007", help="LLaVA server port")
+    parser.add_argument("--server", type=str, default="http://localhost", help="LLaVA server URL, default=http://localhost")
+    parser.add_argument("--port", type=str, default="8007", help="LLaVA server port, default=8007")
     # OpenCLIP
     parser.add_argument("--model", type=str, default="coca_ViT-L-14", help="OpenCLIP model name")
     parser.add_argument("--pretrained", type=str, default="mscoco_finetuned_laion2B-s13B-b90k", help="OpenCLIP pretrained model")
     #
-    parser.add_argument("--save", action='store_true', default=False, help="save powerpoint file with updated alt texts")
+    parser.add_argument("--save", action='store_true', default=False, help="flag to save powerpoint file with updated alt texts")
     parser.add_argument("--add_from_file", type=str, default="", help="Add alt texts from specified file to powerpoint file")
     #
-    parser.add_argument("--debug", action='store_true', default=False, help="debug")
+    parser.add_argument("--debug", action='store_true', default=False, help="flag for debugging")
 
     args = parser.parse_args()
 

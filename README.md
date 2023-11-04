@@ -18,7 +18,6 @@ Show current alt text of images in a Powerpoint file. Python script also creates
 
 ```sh
 python source/auto-alt-text-pptx.py tmp/test.pptx
-
 # output is also written to `tmp/test.txt`
 ```
 
@@ -115,7 +114,7 @@ python source/auto-alt-text-pptx.py tmp/test.pptx --add_from_file tmp/test_kosmo
 
 ## Help
 
-Command options are provided when adding --help
+Command options are shownd when adding `--help`.
 
 ```sh
 python source/auto-alt-text-pptx.py --help

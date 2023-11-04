@@ -8,8 +8,11 @@ import sys
 import argparse
 import requests
 import base64
+import csv
+from pptx.oxml.ns import _nsmap
 from typing import List
 from pptx import Presentation
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.shapes.base import BaseShape
 import open_clip
 import torch
@@ -39,6 +42,13 @@ def num2str(the_max: int, n:int) -> str:
             return f"0{str(n)}"
         else:
             return f"{str(n)}"
+        
+def bool_value(s: str) -> bool:
+    assert(s is not None and len(s) > 0)
+    return s.lower() == "true"
+
+def bool_to_string(b: bool) -> str:
+    return "True" if b else "False"
 
 # https://github.com/scanny/python-pptx/pull/512
 def shape_get_alt_text(shape: BaseShape) -> str:
@@ -49,15 +59,26 @@ def shape_set_alt_text(shape: BaseShape, alt_text: str):
     """ Set alt-text in shape """
     shape._element._nvXxPr.cNvPr.attrib["descr"] = alt_text
 
+# https://stackoverflow.com/questions/63802783/check-if-image-is-decorative-in-powerpoint-using-python-pptx
+def isDecorative(shape):
+    # <adec:decorative xmlns:adec="http://schemas.microsoft.com/office/drawing/2017/decorative" val="1"/>
+    _nsmap["adec"] = "http://schemas.microsoft.com/office/drawing/2017/decorative"
+    cNvPr = shape._element._nvXxPr.cNvPr
+    adec_decoratives = cNvPr.xpath(".//adec:decorative[@val='1']")
+    if adec_decoratives:
+        return True
+    else:
+        return False
+
 def process_images_from_pptx(file_path: str, generate: bool, settings: dict, savePP: bool, DEBUG: bool = False) -> bool:
     """ 
     Loop through images in the slides of a Powerpint file and set image description based 
     on image description from OpenCLIP
     """
     err: bool = False
-    file_name:str = os.path.basename(file_path)
 
-    # get name, extension, folder
+    # get name, extension, folder from Powerpoint file
+    file_name:str = os.path.basename(file_path)    
     name:str = file_name.split(".")[0]
     extension:str = file_name.split(".")[1]
     dirname:str = os.path.dirname(file_path)
@@ -89,33 +110,39 @@ def process_images_from_pptx(file_path: str, generate: bool, settings: dict, sav
 
     # write header
     if model_type != "" and generate:
-        fout.write(f"Model\tFile\tSlide\tPicture\tAlt_Text{os.linesep}")
+        fout.write(f"Model\tFile\tSlide\tPicture\tAlt_Text\tDecorative\tPict_File{os.linesep}")
     else:
-        fout.write(f"File\tSlide\tPicture\tAlt_Text{os.linesep}")
+        fout.write(f"File\tSlide\tPicture\tAlt_Text\Decorative\tPict_File{os.linesep}")
 
     # Loop through slides
     slide_cnt:int = 1
     image_cnt:int = 1
+    image_file_path:str
+    decorative:bool
+    stored_alt_text:str
     for slide in prs.slides:
         # loop through shapes
         slide_image_cnt = 1
         for shape in slide.shapes:
             # Check if the shape has a picture
-            if shape.shape_type == 13:  # Shape type 13 corresponds to a picture
-                
-                if generate:
-                    err = set_alt_text(shape, slide_cnt, nr_slides, slide_image_cnt, settings, DEBUG)
+            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE: 
+                image_file_path = ""
+                decorative = isDecorative(shape)
+
+                # only generate alt text when generate options is True and decorative is False
+                if generate and not decorative:
+                    err, image_file_path = set_alt_text(shape, slide_cnt, nr_slides, slide_image_cnt, settings, DEBUG)
                 
                 # report alt text
                 if not err:
-                    stored_alt_text:str = shape_get_alt_text(shape)
-                    feedback = f"Slide: {slide_cnt}, Picture: '{shape.name}', alt_text: '{stored_alt_text}'"
+                    stored_alt_text = shape_get_alt_text(shape)
+                    feedback = f"Slide: {slide_cnt}, Picture: '{shape.name}', alt_text: '{stored_alt_text}', decorative: {bool_to_string(decorative)}"
                     print(feedback)
 
                     if model_type == "":
-                        fout.write(f"{name}.{extension}\t{slide_cnt}\t{shape.name}\t{stored_alt_text}" + os.linesep)
+                        fout.write(f"{name}.{extension}\t{slide_cnt}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
                     else:
-                        fout.write(f"{model_type}\t{name}.{extension}\t{slide_cnt}\t{shape.name}\t{stored_alt_text}" + os.linesep)
+                        fout.write(f"{model_type}\t{name}.{extension}\t{slide_cnt}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
 
                     slide_image_cnt += 1
                     image_cnt += 1
@@ -200,7 +227,7 @@ def set_alt_text(shape: BaseShape, slide_cnt: int, max_slides: int, image_cnt: i
     else:
         print("No content.")
 
-    return err
+    return err, image_file_path
 
 def generate(image_file_path: str, settings: dict, DEBUG:bool=False) -> str:
     alt_text: str = ""
@@ -288,6 +315,84 @@ def generate(image_file_path: str, settings: dict, DEBUG:bool=False) -> str:
 
     return alt_text    
 
+def add_alt_text_from_file(file_path: str, file_path_txt_file: str) -> bool:
+    """
+    Add alt text specified in a text file (e.g. generated by this script and edited to correct or improve)
+    Text file should have a header and the same columns as the output files generated by this script
+    """
+    err: bool = False
+
+    # Check if text file is exists
+    if not os.path.isfile(file_path_txt_file):
+        print(f"Unable to access file: {file_path_txt_file}")
+        return False
+    
+    # get name, extension, folder from Powerpoint file
+    file_name:str = os.path.basename(file_path)    
+    name:str = file_name.split(".")[0]
+    extension:str = file_name.split(".")[1]
+    dirname:str = os.path.dirname(file_path)
+
+    # process txt file
+    print(f"Reading: {file_path_txt_file}...")
+    csv_rows = []
+    with open(file_path_txt_file, "r") as file:
+        # assume tab delimited file
+        csv_reader = csv.reader(file, delimiter="\t")
+
+        # skip header
+        next(csv_reader)
+
+        for row in csv_reader:
+            csv_rows.append(row)
+
+    # process powerpoint file
+    print(f"Processing Powerpoint file: {file_path}")
+    prs = Presentation(file_path)
+
+    # Loop through slides
+    slide_cnt:int = 1
+    image_cnt:int = 1
+    for slide in prs.slides:
+        # loop through shapes
+        slide_image_cnt = 1
+        for shape in slide.shapes:
+            # Check if the shape has a picture
+            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                decorative_pptx = isDecorative(shape)
+
+                # get decorative
+                decorative = bool_value(csv_rows[image_cnt - 1][5])
+
+                # change decorative status
+                if decorative_pptx != decorative:
+                    # set decorative status of image
+                    print(f"Side: {slide_cnt}, {shape.name}, can't set the docorative status to: {bool_to_string(decorative)}")
+
+                if decorative:
+                    # decorative image
+                    alt_text = ""
+                    #print(f"Image is decorative")
+                else:
+                    # get alt text from text file
+                    alt_text = csv_rows[image_cnt - 1][4]
+                    #print(f"Setting alt-text to: {alt_text}")
+
+                # set alt text
+                shape_set_alt_text(shape, alt_text)
+
+                slide_image_cnt += 1
+                image_cnt += 1
+
+    if not err:
+        # Save file        
+        outfile:str = os.path.join(dirname, f"{name}_alt_text.{extension}")
+        print(f"Saving Powerpoint file with new alt-text to {outfile}")
+        prs.save(outfile)
+
+    return err
+
+
 def main(argv: List[str]) -> int:
     err: bool = False
     
@@ -306,6 +411,7 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--pretrained", type=str, default="mscoco_finetuned_laion2B-s13B-b90k", help="pretrained model")
     #
     parser.add_argument("--save", action='store_true', default=False, help="Save powerpoint file")
+    parser.add_argument("--add_from_file", type=str, default="", help="Add alt text from specified file to powerpoint file")
     #
     parser.add_argument("--debug", action='store_true', default=False, help="debug")
 
@@ -329,8 +435,10 @@ def main(argv: List[str]) -> int:
             "llava_prompt": args.prompt,
             "llava_url": f"{args.server}:{args.port}"
         }
-
-        err = process_images_from_pptx(powerpoint_file_name, args.generate, settings, args.save, args.debug)
+        if args.add_from_file != "":
+            err = add_alt_text_from_file(powerpoint_file_name, args.add_from_file)
+        else:
+            err = process_images_from_pptx(powerpoint_file_name, args.generate, settings, args.save, args.debug)
 
     return(int(err))
 

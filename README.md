@@ -29,7 +29,7 @@ Example command for using [Kosmos-2](https://github.com/microsoft/unilm/tree/mas
 # note that all images in the powerpoint files are saved separately 
 python source/auto-alt-text-pptx.py tmp/test.pptx --type kosmos-2 --generate
 
-# to save a copy of the Powerpoint file as '<name>_alt_text.pptx' add --save
+# to save a copy of the Powerpoint file as '<filename>_alt_text.pptx' add --save
 python source/auto-alt-text-pptx.py tmp/test.pptx --type kosmos-2 --generate --save
 ```
 
@@ -45,7 +45,7 @@ python source/auto-alt-text-pptx.py tmp/test.pptx
 # note that all images in the powerpoint files are saved separately 
 python source/auto-alt-text-pptx.py tmp/test.pptx --type openclip --generate
 
-# to save a copy of the Powerpoint file as '<name>_alt_text.pptx' add --save
+# to save a copy of the Powerpoint file as '<filename>_alt_text.pptx' add --save
 python source/auto-alt-text-pptx.py tmp/test.pptx --type openclip --generate --save
 
 # specify specific OpenCLIP model and pretained model
@@ -93,9 +93,17 @@ Download `ggml-model-q5_k.gguf` and `mmproj-model-f16.gguf` and move the files t
 # note that all images in the powerpoint files are saved separately 
 python source/auto-alt-text-pptx.py tmp/test.pptx --type llava --generate 
 
-# to save a copy of the Powerpoint file as '<name>_alt_text.pptx' add --save
+# to save a copy of the Powerpoint file as '<filename>_alt_text.pptx' add --save
 python source/auto-alt-text-pptx.py tmp/test.pptx --type llava --generate --save
 
 # specify a different prompt
 python source/auto-alt-text-pptx.py tmp/test.pptx --type llava --generate --prompt "Describe in simple words using maximal 125 characters"
+```
+
+## Edit generated alt text and apply to Powerpoint file
+
+The generated alt text is saved to a text file so that it can be edited in a text editor. You can apply the edited alt text to the powerpoint file using the command below. The Powerpoint file is saved as `<filename>_alt_text.pptx`.
+
+```sh
+python source/auto-alt-text-pptx.py tmp/test.pptx --add_from_file tmp/test_kosmos-2.txt
 ```

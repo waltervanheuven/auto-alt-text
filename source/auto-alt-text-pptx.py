@@ -1,6 +1,5 @@
 """
-Add automatically alt text to each picture in a powerpoint file 
-using LLaVA, OpenCLIP, or GPT4
+Generate Alt Text for each picture in powerpoint files using different models (e.g. Kosmos-2, OpenCLIP, LLaVA)
 """
 
 import os

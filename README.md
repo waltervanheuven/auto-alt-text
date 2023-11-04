@@ -1,6 +1,8 @@
 # Auto-Alt-Text
 
-Automatically create alt-text for images in Powerpoint files using [LLaVA](https://llava-vl.github.io), [OpenCLIP](https://github.com/mlfoundations/open_clip), or [Kosmos-2](https://github.com/microsoft/unilm/tree/master/kosmos-2).
+Automatically create **Alt Text** for images in Powerpoint files using [LLaVA](https://llava-vl.github.io), [OpenCLIP](https://github.com/mlfoundations/open_clip), or [Kosmos-2](https://github.com/microsoft/unilm/tree/master/kosmos-2). The Python script will create a text file with the generated Alt Text as well as apply these to the images in the PowerPoint file and save the updated Powerpoint to a new file.
+
+Please note that the Python script has been tested so far only on macOS (M1 MacBook Pro). However, it should also work on Windows and Linux. The models used run all locally.
 
 ## Setup
 
@@ -102,8 +104,8 @@ python source/auto-alt-text-pptx.py tmp/test.pptx --type llava --generate --prom
 
 ## Edit generated alt text and apply to Powerpoint file
 
-The generated alt text is saved to a text file so that it can be edited in a text editor. You can apply the edited alt text to the powerpoint file using the command below. The Powerpoint file is saved as `<filename>_alt_text.pptx`.
+The generated alt text is saved to a text file so that it can be edited. You can apply the edited alt text in the file to the powerpoint file using the command below. The Powerpoint file is saved as `<filename>_alt_text.pptx`.
 
 ```sh
-python source/auto-alt-text-pptx.py tmp/test.pptx --add_from_file tmp/test_kosmos-2.txt
+python source/auto-alt-text-pptx.py tmp/test.pptx --add_from_file tmp/test_kosmos-2_edited.txt
 ```

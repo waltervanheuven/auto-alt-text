@@ -8,6 +8,7 @@ import argparse
 import requests
 import base64
 import csv
+import re
 from pptx.oxml.ns import _nsmap
 from typing import List
 from pptx import Presentation
@@ -166,11 +167,13 @@ def process_images_from_pptx(file_path: str, generate: bool, settings: dict, sav
 def init_model(settings: dict) -> bool:
     err: bool = False
     model_type:str = settings["model_type"]
+    prompt:str = settings["prompt"]
 
     if model_type == "kosmos-2":
         # Kosmos-2 model
         model_name:str = "microsoft/kosmos-2-patch14-224"
         print(f"Kosmos-2 model: '{model_name}'")
+        print(f"prompt: '{prompt}'")
         settings["kosmos2-model"] = AutoModelForVision2Seq.from_pretrained(model_name)
         settings["kosmos2-processor"] = AutoProcessor.from_pretrained(model_name)
     elif model_type == "openclip":
@@ -188,6 +191,7 @@ def init_model(settings: dict) -> bool:
         if check_server_is_running(server_url):
             server_url = f"{server_url}/completion"
             print(f"LLaVA server: '{server_url}'")
+            print(f"prompt: '{prompt}'")
         else:
             print(f"Unable to access server at '{server_url}'.")
             err = True
@@ -239,7 +243,12 @@ def generate(image_file_path: str, settings: dict, DEBUG:bool=False) -> str:
 
         # read image
         im = Image.open(image_file_path)
-        prompt = "<grounding>An image of"
+
+        # prompt
+        prompt:str = settings["prompt"]
+        #prompt = "<grounding>An image of"
+        #prompt = "<grounding> Describe this image in detail:"
+
         inputs = processor(text=prompt, images=im, return_tensors="pt")
 
         generated_ids = model.generate(
@@ -258,8 +267,12 @@ def generate(image_file_path: str, settings: dict, DEBUG:bool=False) -> str:
 
         processed_text, entities = processor.post_process_generation(generated_text)
 
-        # get picture description and remove trailing spaces
-        alt_text = processed_text
+        # remove prompt
+        p = re.sub('<[^<]+?>', '', prompt)
+        processed_text = processed_text.replace(p.strip(), '')
+
+        # capitalize
+        alt_text = processed_text.strip().capitalize()
 
     elif settings["model_type"] == "openclip":
         model = settings["openclip-model"]
@@ -281,7 +294,7 @@ def generate(image_file_path: str, settings: dict, DEBUG:bool=False) -> str:
     elif settings["model_type"] == "llava":
         server_url = settings["llava_url"]
         server_url = f"{server_url}/completion"
-        prompt = settings["llava_prompt"]
+        prompt = settings["prompt"]
 
         # read image
         with open(image_file_path, 'rb') as img_file:
@@ -312,7 +325,7 @@ def generate(image_file_path: str, settings: dict, DEBUG:bool=False) -> str:
             alt_text = response_data.get('content', '').strip()
 
             # remove returns
-            alt_text = alt_text.replace('\r', '')    
+            alt_text = alt_text.replace('\r', '')
 
     return alt_text    
 
@@ -396,21 +409,19 @@ def add_alt_text_from_file(file_path: str, file_path_txt_file: str) -> bool:
 
 def main(argv: List[str]) -> int:
     err: bool = False
-    
-    default_llava_prompt:str = "Describe the image, figure, diagram, chart, table, or graph using a maximum of 125 characters"
 
     parser = argparse.ArgumentParser(description='Add alt-text automatically to images in Powerpoint')
     parser.add_argument("file", type=str, help="Powerpoint file")
     parser.add_argument("--generate", action='store_true', default=False, help="flag to generate alt-text to images")
     parser.add_argument("--type", type=str, default="", help="Model type: kosmos-2, openclip, llava")
     # LLaVA
-    parser.add_argument("--prompt", type=str, default=default_llava_prompt, help="LLaVA prompt")
     parser.add_argument("--server", type=str, default="http://localhost", help="LLaVA server URL, default=http://localhost")
     parser.add_argument("--port", type=str, default="8007", help="LLaVA server port, default=8007")
     # OpenCLIP
     parser.add_argument("--model", type=str, default="coca_ViT-L-14", help="OpenCLIP model name")
     parser.add_argument("--pretrained", type=str, default="mscoco_finetuned_laion2B-s13B-b90k", help="OpenCLIP pretrained model")
     #
+    parser.add_argument("--prompt", type=str, default="", help="Custom prompt for Kosmos-2 or LLaVA")
     parser.add_argument("--save", action='store_true', default=False, help="flag to save powerpoint file with updated alt texts")
     parser.add_argument("--add_from_file", type=str, default="", help="Add alt texts from specified file to powerpoint file")
     #
@@ -418,13 +429,23 @@ def main(argv: List[str]) -> int:
 
     args = parser.parse_args()
 
+    prompt:str = args.prompt
+    model_type:str = args.type.lower()
+    if model_type == "llava":
+        if args.prompt == "":
+            prompt = "Describe the image, figure, diagram, chart, table, or graph using a maximum of 125 characters"
+    elif model_type == "kosmos-2":
+        if args.prompt == "":
+            #prompt = "<grounding>An image of"
+            prompt = "<grounding>Describe this image in detail:"
+
     # Read PowerPoint file and list images
     powerpoint_file_name = args.file
     if not os.path.isfile(powerpoint_file_name):
         print(f"Error: File {powerpoint_file_name} not found.")
         err = True
     else:
-        model_type:str = args.type.lower()
+        
         settings = {
             "model_type": model_type,
             "kosmos2_model": None,
@@ -433,8 +454,8 @@ def main(argv: List[str]) -> int:
             "openclip_pretrained": args.pretrained,
             "openclip-model": None,
             "openclip-transform": None,
-            "llava_prompt": args.prompt,
-            "llava_url": f"{args.server}:{args.port}"
+            "llava_url": f"{args.server}:{args.port}",
+            "prompt": prompt
         }
         if args.add_from_file != "":
             err = add_alt_text_from_file(powerpoint_file_name, args.add_from_file)

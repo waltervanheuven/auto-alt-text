@@ -33,6 +33,9 @@ python source/auto-alt-text-pptx.py tmp/test.pptx --type kosmos-2 --generate
 # to save a copy of the Powerpoint file with the generated alt texts
 # for the images add --save. Powerpoint file will be saved to '<filename>_alt_text.pptx'
 python source/auto-alt-text-pptx.py tmp/test.pptx --type kosmos-2 --generate --save
+
+# custom prompt to get brief image descriptions
+python source/auto-alt-text-pptx.py tmp/test.pptx --type kosmos-2 --generate --save --prompt "<grounding>An image of"
 ```
 
 ## OpenCLIP

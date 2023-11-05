@@ -1,16 +1,16 @@
 """
-Generate Alt Text for each picture in powerpoint files using different models (e.g. Kosmos-2, OpenCLIP, LLaVA)
+Generate Alt Text for each picture in a powerpoint file using MLLM and V-L pre-trained models
 """
 
+from typing import List
 import os
 import sys
 import argparse
-import requests
 import base64
 import csv
 import re
+import requests
 from pptx.oxml.ns import _nsmap
-from typing import List
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.shapes.base import BaseShape
@@ -20,37 +20,41 @@ from transformers import AutoProcessor, AutoModelForVision2Seq
 from PIL import Image
 
 def check_server_is_running(url: str) -> bool:
+    """ URL accessible? """    
+    status: bool = False
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
         if response.status_code == 200:
-            return True
-    except requests.ConnectionError:
-        return False
-    return False
+            status = True
+    except requests.exceptions.Timeout:
+        print("Timeout exception")
+    except requests.exceptions.RequestException as e:
+        print(f"Exception: {str(e)}")
+    return status
 
 def num2str(the_max: int, n:int) -> str:
+    """ convert number to string with trailing zeros """
+    s: str = f"{str(n)}"
     if the_max > 99:
         if n < 100:
             if n < 10:
-                return f"00{str(n)}"
+                s = f"00{str(n)}"
             else:
-                return f"0{str(n)}"
-        else:
-            return f"{str(n)}"
-    else:
-        if n < 10:
-            return f"0{str(n)}"
-        else:
-            return f"{str(n)}"
-        
+                s = f"0{str(n)}"
+    elif n < 10:
+        s = f"0{str(n)}"
+    return s
+
 def bool_value(s: str) -> bool:
+    """ convert str True or False to bool """
     assert(s is not None and len(s) > 0)
     return s.lower() == "true"
 
 def bool_to_string(b: bool) -> str:
+    """ convert bool to str """
     return "True" if b else "False"
 
-# https://github.com/scanny/python-pptx/pull/512
+# see https://github.com/scanny/python-pptx/pull/512
 def shape_get_alt_text(shape: BaseShape) -> str:
     """ Alt-text defined in shape's `descr` attribute, or '' if not present. """
     return shape._element._nvXxPr.cNvPr.attrib.get("descr", "")
@@ -59,43 +63,46 @@ def shape_set_alt_text(shape: BaseShape, alt_text: str):
     """ Set alt-text in shape """
     shape._element._nvXxPr.cNvPr.attrib["descr"] = alt_text
 
-# https://stackoverflow.com/questions/63802783/check-if-image-is-decorative-in-powerpoint-using-python-pptx
-def isDecorative(shape):
+# see https://stackoverflow.com/questions/63802783/check-if-image-is-decorative-in-powerpoint-using-python-pptx
+def is_decorative(shape):
+    """ check if image is decorative """
     # <adec:decorative xmlns:adec="http://schemas.microsoft.com/office/drawing/2017/decorative" val="1"/>
     _nsmap["adec"] = "http://schemas.microsoft.com/office/drawing/2017/decorative"
     cNvPr = shape._element._nvXxPr.cNvPr
     adec_decoratives = cNvPr.xpath(".//adec:decorative[@val='1']")
-    if adec_decoratives:
-        return True
-    else:
-        return False
+    return bool(adec_decoratives)
 
-def process_images_from_pptx(file_path: str, generate: bool, settings: dict, savePP: bool, DEBUG: bool = False) -> bool:
-    """ 
+def process_images_from_pptx(file_path: str, generate: bool, settings: dict, savePP: bool, debug: bool = False) -> bool:
+    """
     Loop through images in the slides of a Powerpint file and set image description based 
     on image description from Kosmos-2, OpenCLIP, or LLaVA
     """
     err: bool = False
 
     # get name, extension, folder from Powerpoint file
-    file_name:str = os.path.basename(file_path)    
+    file_name:str = os.path.basename(file_path)
     name:str = file_name.split(".")[0]
     extension:str = file_name.split(".")[1]
     dirname:str = os.path.dirname(file_path)
 
+    # create folder to store images
+    img_folder = os.path.join(dirname, name)
+    if not os.path.isdir(img_folder):
+        os.makedirs(img_folder)
+
     # Initialize presentation object
     print(f"Reading '{file_path}'")
     prs = Presentation(file_path)
-    
-    model_type:str = settings['model_type']
+
+    model_str:str = settings['model']
 
     # set output file name
     out_file_name:str = ""
-    if model_type != "" and generate:
-        out_file_name = os.path.join(dirname, f"{name}_{model_type}.txt")
+    if model_str != "" and generate:
+        out_file_name = os.path.join(dirname, f"{name}_{model_str}.txt")
     else:
         out_file_name = os.path.join(dirname, f"{name}.txt")
-    
+
     nr_slides = len(prs.slides)
 
     # download and/or set up model
@@ -106,51 +113,47 @@ def process_images_from_pptx(file_path: str, generate: bool, settings: dict, sav
             return err
 
     # open file for writing
-    fout = open(out_file_name, "w")
+    with open(out_file_name, "w", encoding="utf-8") as fout:
+        # write header
+        if model_str != "" and generate:
+            fout.write(f"Model\tFile\tSlide\tPicture\tAlt_Text\tDecorative\tPictFilePath{os.linesep}")
+        else:
+            fout.write(f"File\tSlide\tPicture\tAlt_Text\tDecorative\tPictFilePath{os.linesep}")
 
-    # write header
-    if model_type != "" and generate:
-        fout.write(f"Model\tFile\tSlide\tPicture\tAlt_Text\tDecorative\tPict_File{os.linesep}")
-    else:
-        fout.write(f"File\tSlide\tPicture\tAlt_Text\Decorative\tPict_File{os.linesep}")
+        # Loop through slides
+        slide_cnt:int = 1
+        image_cnt:int = 1
+        image_file_path:str
+        decorative:bool
+        stored_alt_text:str
+        for slide in prs.slides:
+            # loop through shapes
+            slide_image_cnt = 1
+            for shape in slide.shapes:
+                # Check if the shape has a picture
+                if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                    image_file_path = ""
+                    decorative = is_decorative(shape)
 
-    # Loop through slides
-    slide_cnt:int = 1
-    image_cnt:int = 1
-    image_file_path:str
-    decorative:bool
-    stored_alt_text:str
-    for slide in prs.slides:
-        # loop through shapes
-        slide_image_cnt = 1
-        for shape in slide.shapes:
-            # Check if the shape has a picture
-            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE: 
-                image_file_path = ""
-                decorative = isDecorative(shape)
+                    # only generate alt text when generate options is True and decorative is False
+                    if generate and not decorative:
+                        err, image_file_path = set_alt_text(shape, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
 
-                # only generate alt text when generate options is True and decorative is False
-                if generate and not decorative:
-                    err, image_file_path = set_alt_text(shape, slide_cnt, nr_slides, slide_image_cnt, settings, DEBUG)
-                
-                # report alt text
-                if not err:
-                    stored_alt_text = shape_get_alt_text(shape)
-                    feedback = f"Slide: {slide_cnt}, Picture: '{shape.name}', alt_text: '{stored_alt_text}', decorative: {bool_to_string(decorative)}"
-                    print(feedback)
+                    # report alt text
+                    if not err:
+                        stored_alt_text = shape_get_alt_text(shape)
+                        feedback = f"Slide: {slide_cnt}, Picture: '{shape.name}', alt_text: '{stored_alt_text}', decorative: {bool_to_string(decorative)}"
+                        print(feedback)
 
-                    if model_type == "":
-                        fout.write(f"{name}.{extension}\t{slide_cnt}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
-                    else:
-                        fout.write(f"{model_type}\t{name}.{extension}\t{slide_cnt}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
+                        if model_str == "":
+                            fout.write(f"{name}.{extension}\t{slide_cnt}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
+                        else:
+                            fout.write(f"{model_str}\t{name}.{extension}\t{slide_cnt}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
 
-                    slide_image_cnt += 1
-                    image_cnt += 1
+                        slide_image_cnt += 1
+                        image_cnt += 1
 
-        slide_cnt += 1
-
-    # close output file
-    fout.close()
+            slide_cnt += 1
 
     slide_cnt -= 1
     image_cnt -= 1
@@ -165,18 +168,19 @@ def process_images_from_pptx(file_path: str, generate: bool, settings: dict, sav
     return err
 
 def init_model(settings: dict) -> bool:
+    """ download and init model for inference """
     err: bool = False
-    model_type:str = settings["model_type"]
+    model_str:str = settings["model"]
     prompt:str = settings["prompt"]
 
-    if model_type == "kosmos-2":
+    if model_str == "kosmos-2":
         # Kosmos-2 model
         model_name:str = "microsoft/kosmos-2-patch14-224"
         print(f"Kosmos-2 model: '{model_name}'")
         print(f"prompt: '{prompt}'")
         settings["kosmos2-model"] = AutoModelForVision2Seq.from_pretrained(model_name)
         settings["kosmos2-processor"] = AutoProcessor.from_pretrained(model_name)
-    elif model_type == "openclip":
+    elif model_str == "openclip":
         # OpenCLIP
         print(f"OpenCLIP model: '{settings['openclip_model_name']}'\npretrained: '{settings['openclip_pretrained']}'")
         model, _, transform = open_clip.create_model_and_transforms(
@@ -185,7 +189,7 @@ def init_model(settings: dict) -> bool:
         )
         settings["openclip-model"] = model
         settings["openclip-transform"] = transform
-    elif model_type == "llava":
+    elif model_str == "llava":
         # LLaVA
         server_url = settings["llava_url"]
         if check_server_is_running(server_url):
@@ -196,34 +200,34 @@ def init_model(settings: dict) -> bool:
             print(f"Unable to access server at '{server_url}'.")
             err = True
     else:
-        print(f"Unknown model: '{model_type}'")
+        print(f"Unknown model: '{model_str}'")
         err = True
 
     return err
 
-def set_alt_text(shape: BaseShape, slide_cnt: int, max_slides: int, image_cnt: int, settings: dict, DEBUG: bool) -> bool:
+def set_alt_text(shape: BaseShape, img_folder: str, slide_cnt: int, max_slides: int, image_cnt: int, settings: dict, debug: bool) -> bool:
+    """ set alt text of image """
     err: bool = False
-    
+
     # get image
-    try:
+    if hasattr(shape, "image"):
         image_stream = shape.image.blob
         extension:str = shape.image.ext
-    except Exception as e:
-        print(f"Exception {str(e)}")
-        return True
-    
+    else:
+        print(f"Slide: {slide_cnt}, Picture '{shape.name}', no image content found!")
+        return True, ""
+
     image_file_name = f"s{num2str(max_slides, slide_cnt)}p{num2str(99, image_cnt)}_{shape.name}"
-    image_file_path = os.path.join("tmp", image_file_name)
-    image_file_path = os.path.join("tmp", f"{image_file_name}.{extension}")
+    image_file_path = os.path.join(img_folder, f"{image_file_name}.{extension}")
     print(f"Saving and processing image: '{image_file_path}'...")
 
     # save image
     with open(image_file_path, "wb") as f:
         f.write(image_stream)
 
-    alt_text: str = generate(image_file_path, settings)
+    alt_text: str = generate_description(image_file_path, settings)
 
-    if DEBUG:
+    if debug:
         print(f"Len: {len(alt_text)}, Content: {alt_text}")
 
     if len(alt_text) > 0:
@@ -234,10 +238,11 @@ def set_alt_text(shape: BaseShape, slide_cnt: int, max_slides: int, image_cnt: i
 
     return err, image_file_path
 
-def generate(image_file_path: str, settings: dict, DEBUG:bool=False) -> str:
+def generate_description(image_file_path: str, settings: dict, debug:bool=False) -> str:
+    """ generate image text description using MLLM/VL model"""
     alt_text: str = ""
 
-    if settings["model_type"] == "kosmos-2":
+    if settings["model"] == "kosmos-2":
         processor = settings["kosmos2-processor"]
         model = settings["kosmos2-model"]
 
@@ -265,7 +270,8 @@ def generate(image_file_path: str, settings: dict, DEBUG:bool=False) -> str:
         # Specify `cleanup_and_extract=False` in order to see the raw model generation.
         #processed_text = processor.post_process_generation(generated_text, cleanup_and_extract=True)
 
-        processed_text, entities = processor.post_process_generation(generated_text)
+        # processed_text, entities = processor.post_process_generation(generated_text)
+        processed_text, _ = processor.post_process_generation(generated_text)
 
         # remove prompt
         p = re.sub('<[^<]+?>', '', prompt)
@@ -274,7 +280,7 @@ def generate(image_file_path: str, settings: dict, DEBUG:bool=False) -> str:
         # capitalize
         alt_text = processed_text.strip().capitalize()
 
-    elif settings["model_type"] == "openclip":
+    elif settings["model"] == "openclip":
         model = settings["openclip-model"]
         transform = settings["openclip-transform"]
 
@@ -291,9 +297,8 @@ def generate(image_file_path: str, settings: dict, DEBUG:bool=False) -> str:
 
         # remove space before '.'
         alt_text = alt_text.replace(' .', '.')
-    elif settings["model_type"] == "llava":
-        server_url = settings["llava_url"]
-        server_url = f"{server_url}/completion"
+    elif settings["model"] == "llava":
+        server_url = f"{settings['llava_url']}/completion"
         prompt = settings["prompt"]
 
         # read image
@@ -312,14 +317,16 @@ def generate(image_file_path: str, settings: dict, DEBUG:bool=False) -> str:
             "temp": 0.1
         }
         try:
-            response = requests.post(server_url, headers=header, json=data)
+            response = requests.post(server_url, headers=header, json=data, timeout=10)
             response_data = response.json()
 
-            if DEBUG:
+            if debug:
                 print(response_data)
                 print()
-        except Exception as e:
-            print(f"Error: {str(e)}")
+        except requests.exceptions.Timeout:
+            print("Timeout")
+        except requests.exceptions.RequestException as e:
+            print(f"Exception: {str(e)}")
         else:
             # get picture description and remove trailing spaces
             alt_text = response_data.get('content', '').strip()
@@ -327,7 +334,7 @@ def generate(image_file_path: str, settings: dict, DEBUG:bool=False) -> str:
             # remove returns
             alt_text = alt_text.replace('\r', '')
 
-    return alt_text    
+    return alt_text
 
 def add_alt_text_from_file(file_path: str, file_path_txt_file: str) -> bool:
     """
@@ -340,9 +347,9 @@ def add_alt_text_from_file(file_path: str, file_path_txt_file: str) -> bool:
     if not os.path.isfile(file_path_txt_file):
         print(f"Unable to access file: {file_path_txt_file}")
         return False
-    
+
     # get name, extension, folder from Powerpoint file
-    file_name:str = os.path.basename(file_path)    
+    file_name:str = os.path.basename(file_path)
     name:str = file_name.split(".")[0]
     extension:str = file_name.split(".")[1]
     dirname:str = os.path.dirname(file_path)
@@ -350,7 +357,7 @@ def add_alt_text_from_file(file_path: str, file_path_txt_file: str) -> bool:
     # process txt file
     print(f"Reading: {file_path_txt_file}...")
     csv_rows = []
-    with open(file_path_txt_file, "r") as file:
+    with open(file_path_txt_file, "r", encoding="utf-8") as file:
         # assume tab delimited file
         csv_reader = csv.reader(file, delimiter="\t")
 
@@ -373,7 +380,7 @@ def add_alt_text_from_file(file_path: str, file_path_txt_file: str) -> bool:
         for shape in slide.shapes:
             # Check if the shape has a picture
             if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                decorative_pptx = isDecorative(shape)
+                decorative_pptx = is_decorative(shape)
 
                 # get decorative
                 decorative = bool_value(csv_rows[image_cnt - 1][5])
@@ -399,26 +406,26 @@ def add_alt_text_from_file(file_path: str, file_path_txt_file: str) -> bool:
                 image_cnt += 1
 
     if not err:
-        # Save file        
+        # Save file
         outfile:str = os.path.join(dirname, f"{name}_alt_text.{extension}")
         print(f"Saving Powerpoint file with new alt-text to {outfile}")
         prs.save(outfile)
 
     return err
 
-
 def main(argv: List[str]) -> int:
+    """ main """
     err: bool = False
 
     parser = argparse.ArgumentParser(description='Add alt-text automatically to images in Powerpoint')
     parser.add_argument("file", type=str, help="Powerpoint file")
     parser.add_argument("--generate", action='store_true', default=False, help="flag to generate alt-text to images")
-    parser.add_argument("--type", type=str, default="", help="Model type: kosmos-2, openclip, llava")
+    parser.add_argument("--model", type=str, default="", help="Model type: kosmos-2, openclip, llava")
     # LLaVA
     parser.add_argument("--server", type=str, default="http://localhost", help="LLaVA server URL, default=http://localhost")
     parser.add_argument("--port", type=str, default="8007", help="LLaVA server port, default=8007")
     # OpenCLIP
-    parser.add_argument("--model", type=str, default="coca_ViT-L-14", help="OpenCLIP model name")
+    parser.add_argument("--openclip", type=str, default="coca_ViT-L-14", help="OpenCLIP model name")
     parser.add_argument("--pretrained", type=str, default="mscoco_finetuned_laion2B-s13B-b90k", help="OpenCLIP pretrained model")
     #
     parser.add_argument("--prompt", type=str, default="", help="Custom prompt for Kosmos-2 or LLaVA")
@@ -430,11 +437,11 @@ def main(argv: List[str]) -> int:
     args = parser.parse_args()
 
     prompt:str = args.prompt
-    model_type:str = args.type.lower()
-    if model_type == "llava":
+    model_str:str = args.model.lower()
+    if model_str == "llava":
         if args.prompt == "":
             prompt = "Describe the image, figure, diagram, chart, table, or graph using a maximum of 125 characters"
-    elif model_type == "kosmos-2":
+    elif model_str == "kosmos-2":
         if args.prompt == "":
             #prompt = "<grounding>An image of"
             prompt = "<grounding>Describe this image in detail:"
@@ -445,12 +452,12 @@ def main(argv: List[str]) -> int:
         print(f"Error: File {powerpoint_file_name} not found.")
         err = True
     else:
-        
+
         settings = {
-            "model_type": model_type,
+            "model": model_str,
             "kosmos2_model": None,
             "kosmos2_pretrained": None,
-            "openclip_model_name": args.model,
+            "openclip_model_name": args.openclip,
             "openclip_pretrained": args.pretrained,
             "openclip-model": None,
             "openclip-transform": None,
@@ -462,8 +469,8 @@ def main(argv: List[str]) -> int:
         else:
             err = process_images_from_pptx(powerpoint_file_name, args.generate, settings, args.save, args.debug)
 
-    return(int(err))
+    return int(err)
 
 if __name__ == "__main__":
-    exit_code = main(sys.argv[1:])
-    sys.exit(exit_code)
+    EXIT_CODE = main(sys.argv[1:])
+    sys.exit(EXIT_CODE)

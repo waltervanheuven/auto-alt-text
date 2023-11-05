@@ -60,7 +60,7 @@ python source/auto_alt_text.py tmp/test.pptx --model openclip --add --openclip c
 
 ## LLaVA
 
-If you want to use LLaVA to generate image descriptions, you need to set up a LLaVA server. An implementation of LLaVA is available in [llama.cpp](https://github.com/ggerganov/llama.cpp).
+If you want to use LLaVA to generate image descriptions, you need to set up a LLaVA server. A fast implementation of LLaVA is available through [llama.cpp](https://github.com/ggerganov/llama.cpp).
 
 Steps to set up a local LLaVA server:
 
@@ -117,7 +117,7 @@ python source/auto_alt_text.py tmp/test.pptx --add_from_file tmp/test_kosmos-2_e
 
 ## Help
 
-Add `--help` to shown command line options.
+Add `--help` to show command line options.
 
 ```sh
 python source/auto_alt_text.py --help

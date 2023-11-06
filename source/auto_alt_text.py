@@ -10,6 +10,7 @@ import base64
 import csv
 import re
 import requests
+from PIL import Image
 from pptx.oxml.ns import _nsmap
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
@@ -17,7 +18,6 @@ from pptx.shapes.base import BaseShape
 import open_clip
 import torch
 from transformers import AutoProcessor, AutoModelForVision2Seq
-from PIL import Image
 
 def check_server_is_running(url: str) -> bool:
     """ URL accessible? """    
@@ -121,42 +121,17 @@ def process_images_from_pptx(file_path: str, generate: bool, settings: dict, sav
             fout.write(f"File\tSlide\tPicture\tAlt_Text\tDecorative\tPictFilePath{os.linesep}")
 
         # Loop through slides
-        slide_cnt:int = 1
-        image_cnt:int = 1
-        image_file_path:str
-        decorative:bool
-        stored_alt_text:str
+        slide_cnt:int = 0
+        image_cnt:int = 0
         for slide in prs.slides:
             # loop through shapes
-            slide_image_cnt = 1
+            slide_image_cnt = 0
             for shape in slide.shapes:
-                # Check if the shape has a picture
-                if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                    image_file_path = ""
-                    decorative = is_decorative(shape)
-
-                    # only generate alt text when generate options is True and decorative is False
-                    if generate and not decorative:
-                        err, image_file_path = set_alt_text(shape, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
-
-                    # report alt text
-                    if not err:
-                        stored_alt_text = shape_get_alt_text(shape)
-                        feedback = f"Slide: {slide_cnt}, Picture: '{shape.name}', alt_text: '{stored_alt_text}', decorative: {bool_to_string(decorative)}"
-                        print(feedback)
-
-                        if model_str == "":
-                            fout.write(f"{name}.{extension}\t{slide_cnt}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
-                        else:
-                            fout.write(f"{model_str}\t{name}.{extension}\t{slide_cnt}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
-
-                        slide_image_cnt += 1
-                        image_cnt += 1
-
+                 slide_image_cnt = process_shape(shape, model_str, name, extension, fout, generate, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
+            
+            image_cnt += slide_image_cnt
             slide_cnt += 1
 
-    slide_cnt -= 1
-    image_cnt -= 1
     print(f"Powerpoint file contains {slide_cnt} slides and {image_cnt} images.")
 
     if generate and savePP:
@@ -166,6 +141,38 @@ def process_images_from_pptx(file_path: str, generate: bool, settings: dict, sav
         prs.save(outfile)
 
     return err
+
+def process_shape(shape: BaseShape, model_str: str, name: str , extension:str , fout, generate: bool, img_folder: str,
+                    slide_cnt: int, nr_slides: int, slide_image_cnt: int, settings: dict, debug: bool) -> int:
+    """ recursive function to process shapes and shapes in groups on each slide """
+
+    if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+        for embedded_shape in shape.shapes:
+            slide_image_cnt = process_shape(embedded_shape, model_str, name, extension, fout, generate, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
+
+    elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+        err: bool = False
+        image_file_path:str = ""
+        decorative:bool = is_decorative(shape)
+
+        # only generate alt text when generate options is True and decorative is False
+        if generate and not decorative:
+            err, image_file_path = set_alt_text(shape, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
+
+        # report alt text
+        if not err:
+            stored_alt_text = shape_get_alt_text(shape)
+            feedback = f"Slide: {slide_cnt + 1}, Picture: '{shape.name}', alt_text: '{stored_alt_text}', decorative: {bool_to_string(decorative)}"
+            print(feedback)
+
+            if model_str == "":
+                fout.write(f"{name}.{extension}\t{slide_cnt + 1}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
+            else:
+                fout.write(f"{model_str}\t{name}.{extension}\t{slide_cnt + 1}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
+
+            slide_image_cnt += 1
+    
+    return slide_image_cnt
 
 def init_model(settings: dict) -> bool:
     """ download and init model for inference """
@@ -208,33 +215,44 @@ def init_model(settings: dict) -> bool:
 def set_alt_text(shape: BaseShape, img_folder: str, slide_cnt: int, max_slides: int, image_cnt: int, settings: dict, debug: bool) -> bool:
     """ set alt text of image """
     err: bool = False
+    image_file_path: str = ""
 
     # get image
     if hasattr(shape, "image"):
+        # get image, works with only with PNG, JPG?
         image_stream = shape.image.blob
         extension:str = shape.image.ext
     else:
-        print(f"Slide: {slide_cnt}, Picture '{shape.name}', no image content found!")
-        return True, ""
+        # get image for other formats, e.g. TIF
+        # <Element {http://schemas.openxmlformats.org/presentationml/2006/main}pic at 0x15f2d6b20>
+        try:
+            slide_part = shape.part
+            rId = shape._element.blip_rId
+            image_part = slide_part.related_part(rId)
+            image_stream = image_part.blob
+            extension = image_part.partname.ext
+        except AttributeError:
+            print(f"Slide: {slide_cnt + 1 }, Picture '{shape.name}', unable to access image")
+            err = True
 
-    image_file_name = f"s{num2str(max_slides, slide_cnt)}p{num2str(99, image_cnt)}_{shape.name}"
-    image_file_path = os.path.join(img_folder, f"{image_file_name}.{extension}")
-    print(f"Saving and processing image: '{image_file_path}'...")
+    if not err:
+        image_file_name:str = f"s{num2str(max_slides, slide_cnt + 1)}p{num2str(99, image_cnt + 1)}_{shape.name}"
+        image_file_path = os.path.join(img_folder, f"{image_file_name}.{extension}")
+        print(f"Saving and processing image: '{image_file_path}'...")
 
-    # save image
-    with open(image_file_path, "wb") as f:
-        f.write(image_stream)
+        # save image
+        with open(image_file_path, "wb") as f:
+            f.write(image_stream)
 
-    alt_text: str = generate_description(image_file_path, settings)
+        alt_text: str = generate_description(image_file_path, settings)
 
-    if debug:
-        print(f"Len: {len(alt_text)}, Content: {alt_text}")
+        if debug:
+            print(f"Len: {len(alt_text)}, Content: {alt_text}")
 
-    if len(alt_text) > 0:
-        image_description = alt_text
-        shape_set_alt_text(shape, image_description)
-    else:
-        print("No content.")
+        if len(alt_text) > 0:
+            shape_set_alt_text(shape, alt_text)
+        else:
+            print("Alt text is empty")
 
     return err, image_file_path
 
@@ -372,38 +390,14 @@ def add_alt_text_from_file(file_path: str, file_path_txt_file: str) -> bool:
     prs = Presentation(file_path)
 
     # Loop through slides
-    slide_cnt:int = 1
-    image_cnt:int = 1
+    slide_cnt:int = 0
+    image_cnt:int = 0
     for slide in prs.slides:
         # loop through shapes
-        slide_image_cnt = 1
+        slide_image_cnt = 0
         for shape in slide.shapes:
-            # Check if the shape has a picture
-            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                decorative_pptx = is_decorative(shape)
-
-                # get decorative
-                decorative = bool_value(csv_rows[image_cnt - 1][5])
-
-                # change decorative status
-                if decorative_pptx != decorative:
-                    # set decorative status of image
-                    print(f"Side: {slide_cnt}, {shape.name}, can't set the docorative status to: {bool_to_string(decorative)}")
-
-                if decorative:
-                    # decorative image
-                    alt_text = ""
-                    #print(f"Image is decorative")
-                else:
-                    # get alt text from text file
-                    alt_text = csv_rows[image_cnt - 1][4]
-                    #print(f"Setting alt-text to: {alt_text}")
-
-                # set alt text
-                shape_set_alt_text(shape, alt_text)
-
-                slide_image_cnt += 1
-                image_cnt += 1
+            image_cnt, slide_image_cnt = process_shapes_from_file(shape, csv_rows, image_cnt, slide_cnt, slide_image_cnt)
+        slide_cnt += 1
 
     if not err:
         # Save file
@@ -412,6 +406,37 @@ def add_alt_text_from_file(file_path: str, file_path_txt_file: str) -> bool:
         prs.save(outfile)
 
     return err
+
+def process_shapes_from_file(shape: BaseShape, csv_rows, image_cnt: int, slide_cnt:int, slide_image_cnt:int) -> int:
+    """ recursive function to process shapes and shapes within groups """
+    # Check if the shape has a picture
+    if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+        for embedded_shape in shape.shapes:
+            image_cnt, slide_image_cnt = process_shapes_from_file(embedded_shape, csv_rows, image_cnt, slide_cnt, slide_image_cnt)
+
+    elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+        decorative_pptx:bool = is_decorative(shape)
+
+        # get decorative
+        decorative:bool = bool_value(csv_rows[image_cnt][5])
+
+        # change decorative status
+        if decorative_pptx != decorative:
+            # set decorative status of image
+            print(f"Side: {slide_cnt}, {shape.name}, can't set the docorative status to: {bool_to_string(decorative)}")
+
+        alt_text: str = ""
+        if not decorative:
+            # get alt text from text file
+            alt_text = csv_rows[image_cnt][4]
+
+        # set alt text
+        shape_set_alt_text(shape, alt_text)
+        
+        slide_image_cnt += 1
+        image_cnt += 1
+
+    return image_cnt, slide_image_cnt
 
 def main(argv: List[str]) -> int:
     """ main """

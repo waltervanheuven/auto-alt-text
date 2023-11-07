@@ -5,6 +5,7 @@ Generate Alt Text for each picture in a powerpoint file using MLLM and V-L pre-t
 from typing import List
 import os
 import sys
+import io
 import argparse
 import base64
 import csv
@@ -121,18 +122,16 @@ def process_images_from_pptx(file_path: str, generate: bool, settings: dict, sav
             fout.write(f"File\tSlide\tPicture\tAlt_Text\tDecorative\tPictFilePath{os.linesep}")
 
         # Loop through slides
-        slide_cnt:int = 0
         image_cnt:int = 0
-        for slide in prs.slides:
+        for slide_cnt, slide in enumerate(prs.slides):
             # loop through shapes
             slide_image_cnt = 0
             for shape in slide.shapes:
-                 slide_image_cnt = process_shape(shape, model_str, name, extension, fout, generate, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
-            
-            image_cnt += slide_image_cnt
-            slide_cnt += 1
+                 slide_image_cnt = process_shape(shape, None, None, 0, 0, model_str, name, extension, fout, generate, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
 
-    print(f"Powerpoint file contains {slide_cnt} slides and {image_cnt} images.")
+            image_cnt += slide_image_cnt
+
+    print(f"Powerpoint file contains {slide_cnt + 1} slides and {image_cnt} images.")
 
     if generate and savePP:
         # Save file
@@ -141,38 +140,6 @@ def process_images_from_pptx(file_path: str, generate: bool, settings: dict, sav
         prs.save(outfile)
 
     return err
-
-def process_shape(shape: BaseShape, model_str: str, name: str , extension:str , fout, generate: bool, img_folder: str,
-                    slide_cnt: int, nr_slides: int, slide_image_cnt: int, settings: dict, debug: bool) -> int:
-    """ recursive function to process shapes and shapes in groups on each slide """
-
-    if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-        for embedded_shape in shape.shapes:
-            slide_image_cnt = process_shape(embedded_shape, model_str, name, extension, fout, generate, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
-
-    elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-        err: bool = False
-        image_file_path:str = ""
-        decorative:bool = is_decorative(shape)
-
-        # only generate alt text when generate options is True and decorative is False
-        if generate and not decorative:
-            err, image_file_path = set_alt_text(shape, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
-
-        # report alt text
-        if not err:
-            stored_alt_text = shape_get_alt_text(shape)
-            feedback = f"Slide: {slide_cnt + 1}, Picture: '{shape.name}', alt_text: '{stored_alt_text}', decorative: {bool_to_string(decorative)}"
-            print(feedback)
-
-            if model_str == "":
-                fout.write(f"{name}.{extension}\t{slide_cnt + 1}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
-            else:
-                fout.write(f"{model_str}\t{name}.{extension}\t{slide_cnt + 1}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
-
-            slide_image_cnt += 1
-    
-    return slide_image_cnt
 
 def init_model(settings: dict) -> bool:
     """ download and init model for inference """
@@ -212,8 +179,85 @@ def init_model(settings: dict) -> bool:
 
     return err
 
-def set_alt_text(shape: BaseShape, img_folder: str, slide_cnt: int, max_slides: int, image_cnt: int, settings: dict, debug: bool) -> bool:
-    """ set alt text of image """
+def process_shape(shape: BaseShape, images_shape: BaseShape, images, base_left, base_top, model_str: str, name: str , extension:str , fout, generate: bool, img_folder: str,
+                    slide_cnt: int, nr_slides: int, slide_image_cnt: int, settings: dict, debug: bool) -> int:
+    """
+    Recursive function to process shapes and shapes in groups on each slide 
+        
+    TODO: reduce the number of function arguments
+    """
+
+    if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+        # at top level of group shape create a new image based on images in the group
+        #if images == None:
+        #    images = []
+        #    images_shape = shape
+
+        for embedded_shape in shape.shapes:
+            slide_image_cnt = process_shape(embedded_shape, images_shape, images, base_left, base_top, model_str, name, extension, fout, generate, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
+
+        #if images:
+        #    new_img = combine_images_in_group(images, images_shape)
+        #    filename = os.path.join(img_folder, f'slide_{slide_cnt}_group.png')
+        #    new_img.save(filename)
+        #
+        #    # Set Alt Text of group shape based on alt text of new group image
+        #    # There is no function in python pptx to set alt text of a group shape
+        #
+        #    # reset images
+        #    images = None
+
+    elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+        err: bool = False
+        image_file_path:str = ""
+        decorative:bool = is_decorative(shape)
+
+        # only generate alt text when generate options is True and decorative is False
+        if generate and not decorative:
+            err, image_file_path = set_alt_text(shape, images, base_left, base_top, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
+
+        # report alt text
+        if not err:
+            stored_alt_text = shape_get_alt_text(shape)
+            feedback = f"Slide: {slide_cnt + 1}, Picture: '{shape.name}', alt_text: '{stored_alt_text}', decorative: {bool_to_string(decorative)}"
+            print(feedback)
+
+            if model_str == "":
+                fout.write(f"{name}.{extension}\t{slide_cnt + 1}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
+            else:
+                fout.write(f"{model_str}\t{name}.{extension}\t{slide_cnt + 1}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
+
+            slide_image_cnt += 1
+    
+    return slide_image_cnt
+
+def combine_images_in_group(images, group_shape):
+    """ 
+    Create new image based on shape
+
+    TODO: Not yet working properly, image size is not correct
+    """
+
+    # EMU per Pixel estimate: not correct
+    EMU_PER_PIXEL:int = int(914400 / 96)
+
+    # Determine the size of the new image based on the group shape size
+    new_img_width = int(group_shape.width / EMU_PER_PIXEL)
+    new_img_height = int(group_shape.height / EMU_PER_PIXEL)
+    new_img = Image.new('RGB', (new_img_width, new_img_height))
+
+    # Paste each image into the new image at its relative position
+    for image, left, top in images:
+        new_img.paste(image, (int(left / EMU_PER_PIXEL), int(top / EMU_PER_PIXEL)))
+
+    return new_img
+
+def set_alt_text(shape: BaseShape, images, base_left, base_top, img_folder: str, slide_cnt: int, max_slides: int, image_cnt: int, settings: dict, debug: bool) -> bool:
+    """ 
+    Set alt text of image 
+    
+    TODO: reduce the number of function arguments
+    """
     err: bool = False
     image_file_path: str = ""
 
@@ -236,6 +280,15 @@ def set_alt_text(shape: BaseShape, img_folder: str, slide_cnt: int, max_slides: 
             err = True
 
     if not err:
+        # Keep image in case the image is part of a group
+        if images is not None:
+            # Calculate the position of the image relative to the group
+            image_group_part = Image.open(io.BytesIO(image_stream))
+            left = base_left + shape.left
+            top = base_top + shape.top
+            images.append((image_group_part, left, top))
+
+        # determine file name
         image_file_name:str = f"s{num2str(max_slides, slide_cnt + 1)}p{num2str(99, image_cnt + 1)}_{shape.name}"
         image_file_path = os.path.join(img_folder, f"{image_file_name}.{extension}")
         print(f"Saving and processing image: '{image_file_path}'...")
@@ -257,7 +310,7 @@ def set_alt_text(shape: BaseShape, img_folder: str, slide_cnt: int, max_slides: 
     return err, image_file_path
 
 def generate_description(image_file_path: str, settings: dict, debug:bool=False) -> str:
-    """ generate image text description using MLLM/VL model"""
+    """ generate image text description using MLLM/VL model """
     alt_text: str = ""
 
     if settings["model"] == "kosmos-2":
@@ -390,14 +443,12 @@ def add_alt_text_from_file(file_path: str, file_path_txt_file: str) -> bool:
     prs = Presentation(file_path)
 
     # Loop through slides
-    slide_cnt:int = 0
     image_cnt:int = 0
-    for slide in prs.slides:
+    for slide_cnt, slide in enumerate(prs.slides):
         # loop through shapes
         slide_image_cnt = 0
         for shape in slide.shapes:
             image_cnt, slide_image_cnt = process_shapes_from_file(shape, csv_rows, image_cnt, slide_cnt, slide_image_cnt)
-        slide_cnt += 1
 
     if not err:
         # Save file
@@ -465,7 +516,8 @@ def main(argv: List[str]) -> int:
     model_str:str = args.model.lower()
     if model_str == "llava":
         if args.prompt == "":
-            prompt = "Describe the image, figure, diagram, chart, table, or graph using a maximum of 125 characters"
+            prompt = "You are an expert caption writer. Write a concise and accurate image caption. The accuracy is critically important to me."
+            prompt = "Describe the image."
     elif model_str == "kosmos-2":
         if args.prompt == "":
             #prompt = "<grounding>An image of"

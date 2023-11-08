@@ -9,7 +9,7 @@ The script supports currently the following models:
 - [Kosmos-2](https://github.com/microsoft/unilm/tree/master/kosmos-2)
 - [OpenCLIP](https://github.com/mlfoundations/open_clip)
 
-LLaVA, Kosmos-2, and OpenCLIP run all locally. GPT-4V requires API access and will cost money. Images are resized to 150px by 150px by default before inteference.
+LLaVA, Kosmos-2, and OpenCLIP run all locally. GPT-4V requires API access and will cost money. Images are resized to 150px by 150px by default before inference.
 
 ## Setup
 

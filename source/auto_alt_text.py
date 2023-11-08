@@ -19,6 +19,7 @@ from pptx.shapes.base import BaseShape
 import open_clip
 import torch
 from transformers import AutoProcessor, AutoModelForVision2Seq
+from openai import OpenAI
 
 def check_server_is_running(url: str) -> bool:
     """ URL accessible? """    
@@ -173,6 +174,9 @@ def init_model(settings: dict) -> bool:
         else:
             print(f"Unable to access server at '{server_url}'.")
             err = True
+    elif model_str == "gpt4":
+        print("GPT-4V model")
+        print(f"prompt: '{prompt}'")
     else:
         print(f"Unknown model: '{model_str}'")
         err = True
@@ -252,7 +256,7 @@ def combine_images_in_group(images, group_shape):
 
     return new_img
 
-def set_alt_text(shape: BaseShape, images, base_left, base_top, img_folder: str, slide_cnt: int, max_slides: int, image_cnt: int, settings: dict, debug: bool) -> bool:
+def set_alt_text(shape: BaseShape, images, base_left, base_top, img_folder: str, slide_cnt: int, max_slides: int, image_cnt: int, settings: dict, debug: bool) -> [bool, str]:
     """ 
     Set alt text of image 
     
@@ -312,19 +316,24 @@ def set_alt_text(shape: BaseShape, images, base_left, base_top, img_folder: str,
 def generate_description(image_file_path: str, settings: dict, debug:bool=False) -> str:
     """ generate image text description using MLLM/VL model """
     alt_text: str = ""
+    model_str = settings["model"]
 
-    if settings["model"] == "kosmos-2":
-        processor = settings["kosmos2-processor"]
-        model = settings["kosmos2-model"]
-
+    if model_str == "kosmos-2":
         # read image
         im = Image.open(image_file_path)
+        
+        # resize image
+        new_size = (settings["img_size"], settings["img_size"])
+        print(f"Resize image to {new_size}")
+        im = im.resize(new_size)
 
         # prompt
         prompt:str = settings["prompt"]
         #prompt = "<grounding>An image of"
         #prompt = "<grounding> Describe this image in detail:"
 
+        processor = settings["kosmos2-processor"]
+        model = settings["kosmos2-model"]
         inputs = processor(text=prompt, images=im, return_tensors="pt")
 
         generated_ids = model.generate(
@@ -351,15 +360,21 @@ def generate_description(image_file_path: str, settings: dict, debug:bool=False)
         # capitalize
         alt_text = processed_text.strip().capitalize()
 
-    elif settings["model"] == "openclip":
-        model = settings["openclip-model"]
-        transform = settings["openclip-transform"]
+    elif model_str == "openclip":
 
         # read image
         im = Image.open(image_file_path).convert("RGB")
+        
+        # resize image
+        new_size = (settings["img_size"], settings["img_size"])
+        print(f"Resize image to {new_size}")
+        im = im.resize(new_size)
+
+        transform = settings["openclip-transform"]
         im = transform(im).unsqueeze(0)
 
         # use OpenCLIP model to create label
+        model = settings["openclip-model"]
         with torch.no_grad(), torch.cuda.amp.autocast():
             generated = model.generate(im)
 
@@ -368,21 +383,24 @@ def generate_description(image_file_path: str, settings: dict, debug:bool=False)
 
         # remove space before '.'
         alt_text = alt_text.replace(' .', '.')
-    elif settings["model"] == "llava":
-        server_url = f"{settings['llava_url']}/completion"
-        prompt = settings["prompt"]
+    elif model_str == "llava":
 
-        # read image
+        # read image as bytes
         with open(image_file_path, 'rb') as img_file:
             img_byte_arr = img_file.read()
 
         # encode in base64
-        img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
+        img_base64_str = base64.b64encode(img_byte_arr).decode('utf-8')            
+
+        # resize
+        resized_img_base64_str, extension = resize_base64_image(img_base64_str, settings)
 
         # Use LLaVa to get image descriptions
+        server_url = f"{settings['llava_url']}/completion"
+        prompt = settings["prompt"]
         header = {"Content-Type": "application/json"}
         data = {
-            "image_data": [{"data": img_base64, "id": 1}],
+            "image_data": [{"data": resized_img_base64_str, "id": 1}],
             "prompt": f"USER:[img-1] {prompt}\nASSISTANT:",
             "n_predict": 123,
             "temp": 0.1
@@ -404,8 +422,75 @@ def generate_description(image_file_path: str, settings: dict, debug:bool=False)
 
             # remove returns
             alt_text = alt_text.replace('\r', '')
+    elif model_str == "gpt4":
+
+        prompt = settings["prompt"]
+
+        with open(image_file_path, "rb") as image_file:
+            img_base64_str = base64.b64encode(image_file.read()).decode('utf-8')
+
+        resized_img_base64_str, extension = resize_base64_image(img_base64_str, settings)
+
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if api_key != "":
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}"
+            }
+            payload = {
+                "model": "gpt-4-vision-preview",
+                "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                    {
+                        "type": "text",
+                        "text": prompt
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                        "url": f"data:image/{extension};base64,{resized_img_base64_str}"
+                        }
+                    }
+                    ]
+                }
+                ],
+                "max_tokens": 125
+            }
+
+            response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+
+            json_out = response.json()
+            alt_text = json_out["choices"][0]["message"]["content"]
+        else:
+            print("OPENAI_API_KEY not found in environment")
 
     return alt_text
+
+def resize_base64_image(base64_str: str, settings: dict) -> [str, str]:
+    """ resize base64_str image """
+
+    # Decode the base64 string into bytes
+    image_bytes = base64.b64decode(base64_str)
+
+    # resize image
+    im = Image.open(io.BytesIO(image_bytes))
+    new_size = (settings["img_size"], settings["img_size"])
+    print(f"Resize image to {new_size}")
+    resized_im = im.resize(new_size)
+
+    # Convert the resized image back to bytes
+    resized_im_bytes = io.BytesIO()
+    resized_im.save(resized_im_bytes, format=im.format)
+
+    resized_base64_str = base64.b64encode(resized_im_bytes.getvalue()).decode('utf-8')
+
+    #img_to_save = Image.open(io.BytesIO(base64.decodebytes(bytes(resized_base64_str, "utf-8"))))
+    #img_to_save.save('tmp/check_img.png')
+
+    return resized_base64_str, im.format
+
 
 def add_alt_text_from_file(file_path: str, file_path_txt_file: str) -> bool:
     """
@@ -496,13 +581,15 @@ def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(description='Add alt-text automatically to images in Powerpoint')
     parser.add_argument("file", type=str, help="Powerpoint file")
     parser.add_argument("--generate", action='store_true', default=False, help="flag to generate alt-text to images")
-    parser.add_argument("--model", type=str, default="", help="Model type: kosmos-2, openclip, llava")
+    parser.add_argument("--model", type=str, default="", help="Model type: kosmos-2, openclip, llava, gpt4")
     # LLaVA
     parser.add_argument("--server", type=str, default="http://localhost", help="LLaVA server URL, default=http://localhost")
     parser.add_argument("--port", type=str, default="8007", help="LLaVA server port, default=8007")
     # OpenCLIP
     parser.add_argument("--openclip", type=str, default="coca_ViT-L-14", help="OpenCLIP model name")
     parser.add_argument("--pretrained", type=str, default="mscoco_finetuned_laion2B-s13B-b90k", help="OpenCLIP pretrained model")
+    #
+    parser.add_argument("--img_resize", type=str, default="150", help="resize image width and heigh in pixels")
     #
     parser.add_argument("--prompt", type=str, default="", help="Custom prompt for Kosmos-2 or LLaVA")
     parser.add_argument("--save", action='store_true', default=False, help="flag to save powerpoint file with updated alt texts")
@@ -514,10 +601,14 @@ def main(argv: List[str]) -> int:
 
     prompt:str = args.prompt
     model_str:str = args.model.lower()
-    if model_str == "llava":
+
+    # set default prompt
+    if model_str == "gpt4":
         if args.prompt == "":
-            prompt = "You are an expert caption writer. Write a concise and accurate image caption. The accuracy is critically important to me."
-            prompt = "Describe the image."
+            prompt = "Describe in one sentence. "
+    elif model_str == "llava":
+        if args.prompt == "":
+            prompt = "Describe the image"
     elif model_str == "kosmos-2":
         if args.prompt == "":
             #prompt = "<grounding>An image of"
@@ -539,7 +630,8 @@ def main(argv: List[str]) -> int:
             "openclip-model": None,
             "openclip-transform": None,
             "llava_url": f"{args.server}:{args.port}",
-            "prompt": prompt
+            "prompt": prompt,
+            "img_size": int(args.img_resize)
         }
         if args.add_from_file != "":
             err = add_alt_text_from_file(powerpoint_file_name, args.add_from_file)

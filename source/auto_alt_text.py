@@ -195,7 +195,7 @@ def init_model(settings: dict) -> bool:
         else:
             print(f"Unable to access server at '{server_url}'.")
             err = True
-    elif model_str == "gpt4":
+    elif model_str == "gpt-4v":
         print("GPT-4V")
     else:
         print(f"Unknown model: '{model_str}'")
@@ -360,8 +360,8 @@ def generate_description(image_file_path: str, settings: dict, debug:bool=False)
         alt_text = openclip(image_file_path, settings, debug)
     elif model_str == "llava":
         alt_text = llava(image_file_path, settings, debug)
-    elif model_str == "gpt4":
-        alt_text = gpt4(image_file_path, settings, debug)
+    elif model_str == "gpt-4v":
+        alt_text = gpt4v(image_file_path, settings, debug)
     else:
         print(f"Unknown model: {model_str}")
 
@@ -488,7 +488,7 @@ def llava(image_file_path: str, settings: dict, debug:bool=False) -> str:
 
     return alt_text
 
-def gpt4(image_file_path: str, settings: dict, debug:bool=False) -> str:
+def gpt4v(image_file_path: str, settings: dict, debug:bool=False) -> str:
     """ get image description from GPT-4V """
     alt_text:str = ""
 
@@ -658,7 +658,7 @@ def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(description='Add alt-text automatically to images in Powerpoint')
     parser.add_argument("file", type=str, help="Powerpoint file")
     parser.add_argument("--generate", action='store_true', default=False, help="flag to generate alt-text to images")
-    parser.add_argument("--model", type=str, default="", help="Model type: kosmos-2, openclip, llava, gpt4")
+    parser.add_argument("--model", type=str, default="", help="kosmos-2, openclip, llava, or gpt-4v")
     # LLaVA
     parser.add_argument("--server", type=str, default="http://localhost", help="LLaVA server URL, default=http://localhost")
     parser.add_argument("--port", type=str, default="8007", help="LLaVA server port, default=8007")
@@ -688,7 +688,7 @@ def main(argv: List[str]) -> int:
         return int(err)
 
     # set default prompt
-    if model_str == "gpt4":
+    if model_str == "gpt-4v":
         if args.prompt == "":
             prompt = "Describe in one sentence. "
     elif model_str == "llava":

@@ -197,6 +197,8 @@ def init_model(settings: dict) -> bool:
             err = True
     elif model_str == "gpt-4v":
         print("GPT-4V")
+        print(f"model: {settings['gpt4v_model']}")
+        print(f"prompt: '{prompt}'")
     else:
         print(f"Unknown model: '{model_str}'")
         err = True
@@ -503,24 +505,19 @@ def gpt4v(image_file_path: str, settings: dict, debug:bool=False) -> str:
         # resize
         resized_img_base64_str, extension = resize_base64_image(img_base64_str, settings)
 
-        model = "gpt-4-vision-preview"
-        print(f"model: {model}")
-        prompt = settings["prompt"]
-        print(f"prompt: '{prompt}'")
-
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}"
         }
         payload = {
-            "model": model,
+            "model": settings["gpt4v_model"],
             "messages": [
             {
                 "role": "user",
                 "content": [
                 {
                     "type": "text",
-                    "text": prompt
+                    "text": settings["prompt"]
                 },
                 {
                     "type": "image_url",
@@ -534,11 +531,15 @@ def gpt4v(image_file_path: str, settings: dict, debug:bool=False) -> str:
             "max_tokens": 300
         }
 
-        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+        try:
+            response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
 
-        json_out = response.json()
-        alt_text = json_out["choices"][0]["message"]["content"]
-
+            json_out = response.json()
+        
+            alt_text = json_out["choices"][0]["message"]["content"]
+        except Exception as e:
+            print(f"Exception {str(e)}")
+    
     return alt_text 
 
 def resize_base64_image(base64_str: str, settings: dict) -> [str, str]:
@@ -690,7 +691,7 @@ def main(argv: List[str]) -> int:
     # set default prompt
     if model_str == "gpt-4v":
         if args.prompt == "":
-            prompt = "Describe in one sentence. "
+            prompt = "Describe in one sentence."
     elif model_str == "llava":
         if args.prompt == "":
             prompt = "Describe the image"
@@ -716,6 +717,7 @@ def main(argv: List[str]) -> int:
             "openclip-model": None,
             "openclip-transform": None,
             "llava_url": f"{args.server}:{args.port}",
+            "gpt4v_model": "gpt-4-vision-preview",
             "prompt": prompt,
             "img_size": int(args.resize)
         }

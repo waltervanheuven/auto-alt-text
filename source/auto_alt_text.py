@@ -57,11 +57,11 @@ def bool_to_string(b: bool) -> str:
     return "True" if b else "False"
 
 # see https://github.com/scanny/python-pptx/pull/512
-def shape_get_alt_text(shape: BaseShape) -> str:
+def get_alt_text(shape: BaseShape) -> str:
     """ Alt text is defined in shape's `descr` attribute, return this or '' if not present. """
     return shape._element._nvXxPr.cNvPr.attrib.get("descr", "")
 
-def shape_set_alt_text(shape: BaseShape, alt_text: str):
+def set_alt_text(shape: BaseShape, alt_text: str):
     """ Set alt text of shape """
     shape._element._nvXxPr.cNvPr.attrib["descr"] = alt_text
 
@@ -207,30 +207,36 @@ def init_model(settings: dict) -> bool:
 
 def process_shape(shape: BaseShape, param: dict, settings: dict, debug: bool) -> None:
     """
-    Recursive function to process shapes and shapes in groups on each slide 
-        
-    TODO: reduce the number of function arguments
+    Recursive function to process shapes and shapes in groups on each slide
     """
 
     if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-        # at top level of group shape create a new image based on images in the group
-        #if image_list == None:
-        #    image_list = []
-        #    images_shape = shape
+        # keep a list of images as part of the group
+        if param["image_list"] == None:
+            param["image_list"] = []
+            param["images_shape"] = shape
 
         for embedded_shape in shape.shapes:
             slide_image_cnt = process_shape(embedded_shape, param, settings, debug)
 
-        #if image_list:
-        #    new_img = combine_images_in_group(image_list, images_shape)
-        #    filename = os.path.join(img_folder, f'slide_{slide_cnt}_group.png')
-        #    new_img.save(filename)
-        #
-        #    # Set Alt Text of group shape based on alt text of new group image
-        #    # There is no function in python pptx to set alt text of a group shape
-        #
-        #    # reset images
-        #    image_list = None
+        if param["image_list"] is not None:
+            # new_img = combine_images_in_group(image_list, images_shape)
+            # filename = os.path.join(img_folder, f'slide_{slide_cnt}_group.png')
+            # new_img.save(filename)
+            #
+
+            # combine alt text to generate the alt text for the group
+            alt_text = ""
+            for shape, _, _, txt in param["image_list"]:
+                alt_text = f"{alt_text} {txt}"
+
+            # set alt text of group shape
+            group_shape = param["images_shape"]
+            set_alt_text(group_shape, alt_text)
+
+            # reset images
+            param["image_list"] = None
+            param["images_shape"] = None
 
     elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
         err: bool = False
@@ -250,7 +256,7 @@ def process_shape(shape: BaseShape, param: dict, settings: dict, debug: bool) ->
             slide_cnt:int = param["slide_cnt"]
             slide_image_cnt:int = param["slide_image_cnt"]
 
-            stored_alt_text = shape_get_alt_text(shape)
+            stored_alt_text = get_alt_text(shape)
             feedback = f"Slide: {slide_cnt + 1}, Pict: {slide_image_cnt + 1}, alt_text: '{stored_alt_text}', decorative: {bool_to_string(decorative)}"
             print(feedback)
 
@@ -281,7 +287,7 @@ def combine_images_in_group(images, group_shape):
     new_img = Image.new('RGB', (new_img_width, new_img_height))
 
     # Paste each image into the new image at its relative position
-    for image, left, top in images:
+    for image, left, top, alt_text in images:
         new_img.paste(image, (int(left / EMU_PER_PIXEL), int(top / EMU_PER_PIXEL)))
 
     return new_img
@@ -313,17 +319,8 @@ def save_image_and_generate_alt_text(shape, param, settings, debug) -> [bool, st
             err = True
 
     if not err:
-        image_list = param["image_list"]
         base_left:int = param["base_left"]
         base_top:int = param["base_top"]
-
-        # Keep image in case the image is part of a group
-        if image_list is not None:
-            # Calculate the position of the image relative to the group
-            image_group_part = Image.open(io.BytesIO(image_stream))
-            left = base_left + shape.left
-            top = base_top + shape.top
-            image_list.append((image_group_part, left, top))
 
         # determine file name
         pptx_nslides: int = param["pptx_nslides"]
@@ -341,11 +338,21 @@ def save_image_and_generate_alt_text(shape, param, settings, debug) -> [bool, st
 
         alt_text: str = generate_description(image_file_path, settings)
 
+        # Keep image in case the image is part of a group
+        if param["image_list"] is not None:
+            # Calculate the position of the image relative to the group
+            image_group_part = Image.open(io.BytesIO(image_stream))
+            left = base_left + shape.left
+            top = base_top + shape.top
+            image_list = param["image_list"]
+            image_list.append((image_group_part, left, top, alt_text))
+            param["image_list"] = image_list
+
         if debug:
             print(f"Len: {len(alt_text)}, Content: {alt_text}")
 
         if len(alt_text) > 0:
-            shape_set_alt_text(shape, alt_text)
+            set_alt_text(shape, alt_text)
         else:
             print("Alt text is empty")
 
@@ -645,7 +652,7 @@ def process_shapes_from_file(shape: BaseShape, csv_rows, image_cnt: int, slide_c
             alt_text = csv_rows[image_cnt][4]
 
         # set alt text
-        shape_set_alt_text(shape, alt_text)
+        set_alt_text(shape, alt_text)
         
         slide_image_cnt += 1
         image_cnt += 1

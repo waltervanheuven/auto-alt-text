@@ -153,4 +153,4 @@ python source/auto_alt_text.py --help
 ## Limitations
 
 - Script will save each image in a shape group. Ideally, it should combine them to create a combined image so that it can set the alt text of the shape group.
-- When an image is grouped with a text box the alt text can be set for the image but not for the group. Powerpoint accessibility requires that the shape group should have an alt text.
+- Grouped images or image/text groups should be saved to text file with alt text and these should be imported as well

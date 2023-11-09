@@ -78,6 +78,9 @@ python source/auto_alt_text.py pptx/test1.pptx --model openclip --generate
 # for the images add --save. Powerpoint file will be saved to '<filename>_alt_text.pptx'
 python source/auto_alt_text.py pptx/test1.pptx --model openclip --generate --save
 
+# list available OpenCLIP models
+python source/auto_alt_text.py pptx/test1.pptx --openclip_models
+
 # specify specific OpenCLIP model and pretained model
 python source/auto_alt_text.py pptx/test1.pptx --model openclip --add --openclip coca_ViT-L-14 --pretrained mscoco_finetuned_laion2B-s13B-b90k
 ```
@@ -149,4 +152,5 @@ python source/auto_alt_text.py --help
 
 ## Limitations
 
-Script will save each image in a shape group. Ideally, it should combine them to create a combined image so that it can set the alt text of the shape group.
+- Script will save each image in a shape group. Ideally, it should combine them to create a combined image so that it can set the alt text of the shape group.
+- When an image is grouped with a text box the alt text can be set for the image but not for the group. Powerpoint accessibility requires that the shape group should have an alt text.

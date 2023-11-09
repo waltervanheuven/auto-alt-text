@@ -74,7 +74,7 @@ def is_decorative(shape):
     adec_decoratives = cNvPr.xpath(".//adec:decorative[@val='1']")
     return bool(adec_decoratives)
 
-def process_images_from_pptx(file_path: str, generate: bool, settings: dict, savePP: bool, debug: bool = False) -> bool:
+def process_images_from_pptx(file_path: str, settings: dict, savePP: bool, debug: bool = False) -> bool:
     """
     Loop through images in the slides of a Powerpint file and set image description based 
     on image description from Kosmos-2, OpenCLIP, or LLaVA
@@ -83,12 +83,12 @@ def process_images_from_pptx(file_path: str, generate: bool, settings: dict, sav
 
     # get name, extension, folder from Powerpoint file
     file_name:str = os.path.basename(file_path)
-    name:str = file_name.split(".")[0]
-    extension:str = file_name.split(".")[1]
+    pptx_name:str = file_name.split(".")[0]
+    pptx_extension:str = file_name.split(".")[1]
     dirname:str = os.path.dirname(file_path)
 
     # create folder to store images
-    img_folder = os.path.join(dirname, name)
+    img_folder = os.path.join(dirname, pptx_name)
     if not os.path.isdir(img_folder):
         os.makedirs(img_folder)
 
@@ -100,12 +100,13 @@ def process_images_from_pptx(file_path: str, generate: bool, settings: dict, sav
 
     # set output file name
     out_file_name:str = ""
+    generate: bool = settings["generate"]
     if model_str != "" and generate:
-        out_file_name = os.path.join(dirname, f"{name}_{model_str}.txt")
+        out_file_name = os.path.join(dirname, f"{pptx_name}_{model_str}.txt")
     else:
-        out_file_name = os.path.join(dirname, f"{name}.txt")
+        out_file_name = os.path.join(dirname, f"{pptx_name}.txt")
 
-    nr_slides = len(prs.slides)
+    pptx_nslides = len(prs.slides)
 
     # download and/or set up model
     if generate:
@@ -114,29 +115,49 @@ def process_images_from_pptx(file_path: str, generate: bool, settings: dict, sav
             print("Unable to init model.")
             return err
 
+    param = {
+        'images_shape': None, # image for group shape
+        'image_list': None,   # list of images in the group shape
+        'base_left': 0,       # base_left of group shape
+        'base_top': 0,        # base_top of group shape
+        'pptx_name': pptx_name,
+        'pptx_extension': pptx_extension,
+        'fout': None,         # fout of text file
+        'img_folder': img_folder,
+        'pptx_nslides': pptx_nslides,
+        'slide_cnt': 0,
+        'slide_image_cnt': 0
+    }
+            
     # open file for writing
     with open(out_file_name, "w", encoding="utf-8") as fout:
+
+        param["fout"] = fout
+
         # write header
         if model_str != "" and generate:
-            fout.write(f"Model\tFile\tSlide\tPicture\tAlt_Text\tDecorative\tPictFilePath{os.linesep}")
+            fout.write(f"Model\tFile\tSlide\tPictName\tAlt_Text\tDecorative\tPictFilePath{os.linesep}")
         else:
-            fout.write(f"File\tSlide\tPicture\tAlt_Text\tDecorative\tPictFilePath{os.linesep}")
+            fout.write(f"File\tSlide\tPictName\tAlt_Text\tDecorative\tPictFilePath{os.linesep}")
+
+        # total number of images in the pptx
+        image_cnt:int = 0
 
         # Loop through slides
-        image_cnt:int = 0
         for slide_cnt, slide in enumerate(prs.slides):
             # loop through shapes
-            slide_image_cnt = 0
+            param["slide_image_cnt"] = 0
             for shape in slide.shapes:
-                 slide_image_cnt = process_shape(shape, None, None, 0, 0, model_str, name, extension, fout, generate, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
+                param["slide_cnt"] = slide_cnt
+                process_shape(shape, param, settings, debug)
 
-            image_cnt += slide_image_cnt
+            image_cnt += param["slide_image_cnt"]
 
-    print(f"Powerpoint file contains {slide_cnt + 1} slides and {image_cnt} images.")
+    print(f"Powerpoint file contains {slide_cnt + 1} slides and in total {image_cnt} images.")
 
     if generate and savePP:
         # Save file
-        outfile:str = os.path.join(dirname, f"{name}_alt_text.{extension}")
+        outfile:str = os.path.join(dirname, f"{pptx_name}_alt_text.{pptx_extension}")
         print(f"Saving Powerpoint file with new alt-text to {outfile}")
         prs.save(outfile)
 
@@ -182,8 +203,7 @@ def init_model(settings: dict) -> bool:
 
     return err
 
-def process_shape(shape: BaseShape, images_shape: BaseShape, images, base_left, base_top, model_str: str, name: str , extension:str , fout, generate: bool, img_folder: str,
-                    slide_cnt: int, nr_slides: int, slide_image_cnt: int, settings: dict, debug: bool) -> int:
+def process_shape(shape: BaseShape, param: dict, settings: dict, debug: bool) -> None:
     """
     Recursive function to process shapes and shapes in groups on each slide 
         
@@ -192,15 +212,15 @@ def process_shape(shape: BaseShape, images_shape: BaseShape, images, base_left, 
 
     if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
         # at top level of group shape create a new image based on images in the group
-        #if images == None:
-        #    images = []
+        #if image_list == None:
+        #    image_list = []
         #    images_shape = shape
 
         for embedded_shape in shape.shapes:
-            slide_image_cnt = process_shape(embedded_shape, images_shape, images, base_left, base_top, model_str, name, extension, fout, generate, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
+            slide_image_cnt = process_shape(embedded_shape, param, settings, debug)
 
-        #if images:
-        #    new_img = combine_images_in_group(images, images_shape)
+        #if image_list:
+        #    new_img = combine_images_in_group(image_list, images_shape)
         #    filename = os.path.join(img_folder, f'slide_{slide_cnt}_group.png')
         #    new_img.save(filename)
         #
@@ -208,31 +228,40 @@ def process_shape(shape: BaseShape, images_shape: BaseShape, images, base_left, 
         #    # There is no function in python pptx to set alt text of a group shape
         #
         #    # reset images
-        #    images = None
+        #    image_list = None
 
     elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
         err: bool = False
         image_file_path:str = ""
         decorative:bool = is_decorative(shape)
 
+        generate:bool = settings["generate"]
+
         # only generate alt text when generate options is True and decorative is False
         if generate and not decorative:
-            err, image_file_path = set_alt_text(shape, images, base_left, base_top, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
+
+            #err, image_file_path = set_alt_text(shape, image_list, base_left, base_top, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
+            err, image_file_path = save_image_and_generate_alt_text(shape, param, settings, debug)
 
         # report alt text
         if not err:
+            slide_cnt:int = param["slide_cnt"]
+            slide_image_cnt:int = param["slide_image_cnt"]
+
             stored_alt_text = shape_get_alt_text(shape)
             feedback = f"Slide: {slide_cnt + 1}, Pict: {slide_image_cnt + 1}, alt_text: '{stored_alt_text}', decorative: {bool_to_string(decorative)}"
             print(feedback)
 
+            model_str:str = settings["model"]
+            pptx_name:str = param["pptx_name"]
+            pptx_extension:str = param["pptx_extension"]
+            fout = param["fout"]
             if model_str == "":
-                fout.write(f"{name}.{extension}\t{slide_cnt + 1}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
+                fout.write(f"{pptx_name}.{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
             else:
-                fout.write(f"{model_str}\t{name}.{extension}\t{slide_cnt + 1}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
+                fout.write(f"{model_str}\t{pptx_name}.{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
 
-            slide_image_cnt += 1
-    
-    return slide_image_cnt
+            param["slide_image_cnt"] = slide_image_cnt + 1
 
 def combine_images_in_group(images, group_shape):
     """ 
@@ -255,11 +284,9 @@ def combine_images_in_group(images, group_shape):
 
     return new_img
 
-def set_alt_text(shape: BaseShape, images, base_left, base_top, img_folder: str, slide_cnt: int, max_slides: int, image_cnt: int, settings: dict, debug: bool) -> [bool, str]:
+def save_image_and_generate_alt_text(shape, param, settings, debug) -> [bool, str]:
     """ 
-    Set alt text of image 
-    
-    TODO: reduce the number of function arguments
+    Save image associated with shape and generate alt text
     """
     err: bool = False
     image_file_path: str = ""
@@ -279,21 +306,30 @@ def set_alt_text(shape: BaseShape, images, base_left, base_top, img_folder: str,
             image_stream = image_part.blob
             extension = image_part.partname.ext
         except AttributeError:
-            print(f"Slide: {slide_cnt + 1 }, Picture '{shape.name}', unable to access image")
+            slide_cnt:int = param["slide_cnt"] + 1
+            print(f"Slide: {slide_cnt}, Picture '{shape.name}', unable to access image")
             err = True
 
     if not err:
+        image_list = param["image_list"]
+        base_left:int = param["base_left"]
+        base_top:int = param["base_top"]
+
         # Keep image in case the image is part of a group
-        if images is not None:
+        if image_list is not None:
             # Calculate the position of the image relative to the group
             image_group_part = Image.open(io.BytesIO(image_stream))
             left = base_left + shape.left
             top = base_top + shape.top
-            images.append((image_group_part, left, top))
+            image_list.append((image_group_part, left, top))
 
         # determine file name
-        # image_file_name:str = f"s{num2str(max_slides, slide_cnt + 1)}p{num2str(99, image_cnt + 1)}_{shape.name}"
-        image_file_name:str = f"s{num2str(max_slides, slide_cnt + 1)}p{num2str(99, image_cnt + 1)}"
+        pptx_nslides: int = param["pptx_nslides"]
+        slide_image_cnt:int = param["slide_image_cnt"]
+        slide_cnt:int = param["slide_cnt"]
+        pptx_nslides:int = param["pptx_nslides"]
+        img_folder:str = param["img_folder"]
+        image_file_name:str = f"s{num2str(pptx_nslides, slide_cnt + 1)}p{num2str(99, slide_image_cnt + 1)}"
         image_file_path = os.path.join(img_folder, f"{image_file_name}.{extension}")
         print(f"Saving and processing image: '{image_file_path}'...")
 
@@ -319,159 +355,191 @@ def generate_description(image_file_path: str, settings: dict, debug:bool=False)
     model_str = settings["model"]
 
     if model_str == "kosmos-2":
-        # read image
-        im = Image.open(image_file_path)
-        
-        # resize image
-        new_size = (settings["img_size"], settings["img_size"])
-        print(f"Resize image to {new_size}")
-        im = im.resize(new_size)
-
-        # prompt
-        prompt:str = settings["prompt"]
-        #prompt = "<grounding>An image of"
-        #prompt = "<grounding> Describe this image in detail:"
-
-        processor = settings["kosmos2-processor"]
-        model = settings["kosmos2-model"]
-        inputs = processor(text=prompt, images=im, return_tensors="pt")
-
-        generated_ids = model.generate(
-            pixel_values=inputs["pixel_values"],
-            input_ids=inputs["input_ids"],
-            attention_mask=inputs["attention_mask"],
-            image_embeds=None,
-            image_embeds_position_mask=inputs["image_embeds_position_mask"],
-            use_cache=True,
-            max_new_tokens=128,
-        )
-        generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-
-        # Specify `cleanup_and_extract=False` in order to see the raw model generation.
-        #processed_text = processor.post_process_generation(generated_text, cleanup_and_extract=True)
-
-        # processed_text, entities = processor.post_process_generation(generated_text)
-        processed_text, _ = processor.post_process_generation(generated_text)
-
-        # remove prompt
-        p = re.sub('<[^<]+?>', '', prompt)
-        processed_text = processed_text.replace(p.strip(), '')
-
-        # capitalize
-        alt_text = processed_text.strip().capitalize()
-
+        alt_text = kosmos2(image_file_path, settings, debug)
     elif model_str == "openclip":
+        alt_text = openclip(image_file_path, settings, debug)
+    elif model_str == "llava":
+        alt_text = llava(image_file_path, settings, debug)
+    elif model_str == "gpt4":
+        alt_text = gpt4(image_file_path, settings, debug)
+    else:
+        print(f"Unknown model: {model_str}")
 
-        # read image
-        im = Image.open(image_file_path).convert("RGB")
-        
-        # resize image
-        new_size = (settings["img_size"], settings["img_size"])
+    return alt_text
+
+def kosmos2(image_file_path: str, settings: dict, debug:bool=False) -> str:
+    """ get image description from Kosmos-2 """
+    # read image
+    im = Image.open(image_file_path)
+    
+    # resize image
+    px:int = settings["img_size"]
+    if px != 0:
+        new_size = (px, px)
         print(f"Resize image to {new_size}")
         im = im.resize(new_size)
 
-        transform = settings["openclip-transform"]
-        im = transform(im).unsqueeze(0)
+    # prompt
+    prompt:str = settings["prompt"]
+    #prompt = "<grounding>An image of"
+    #prompt = "<grounding> Describe this image in detail:"
 
-        # use OpenCLIP model to create label
-        model = settings["openclip-model"]
-        with torch.no_grad(), torch.cuda.amp.autocast():
-            generated = model.generate(im)
+    processor:str = settings["kosmos2-processor"]
+    model:str = settings["kosmos2-model"]
+    
+    inputs = processor(text=prompt, images=im, return_tensors="pt")
+    generated_ids = model.generate(
+        pixel_values=inputs["pixel_values"],
+        input_ids=inputs["input_ids"],
+        attention_mask=inputs["attention_mask"],
+        image_embeds=None,
+        image_embeds_position_mask=inputs["image_embeds_position_mask"],
+        use_cache=True,
+        max_new_tokens=128,
+    )
+    generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
+    # Specify `cleanup_and_extract=False` in order to see the raw model generation.
+    #processed_text = processor.post_process_generation(generated_text, cleanup_and_extract=True)
+
+    # processed_text, entities = processor.post_process_generation(generated_text)
+    processed_text, _ = processor.post_process_generation(generated_text)
+
+    # remove prompt
+    p:str = re.sub('<[^<]+?>', '', prompt)
+    processed_text = processed_text.replace(p.strip(), '')
+
+    # capitalize
+    alt_text:str = processed_text.strip().capitalize()
+
+    return alt_text
+
+
+def openclip(image_file_path: str, settings: dict, debug:bool=False) -> str:
+    """ get image description from OpenCLIP """
+
+    # read image
+    im = Image.open(image_file_path).convert("RGB")
+    
+    # resize image
+    px:int = settings["img_size"]
+    if px != 0:
+        new_size = (px, px)
+        print(f"Resize image to {new_size}")
+        im = im.resize(new_size)
+
+    transform = settings["openclip-transform"]
+    im = transform(im).unsqueeze(0)
+
+    # use OpenCLIP model to create label
+    model = settings["openclip-model"]
+    with torch.no_grad(), torch.cuda.amp.autocast():
+        generated = model.generate(im)
+
+    # get picture description and remove trailing spaces
+    alt_text = open_clip.decode(generated[0]).split("<end_of_text>")[0].replace("<start_of_text>", "").strip()
+
+    # remove space before '.' and capitalize
+    alt_text = alt_text.replace(' .', '.').capitalize()
+
+    return alt_text
+
+def llava(image_file_path: str, settings: dict, debug:bool=False) -> str:
+    """ get image description from LLaVA """
+    alt_text:str = ""
+
+    # read image as bytes
+    with open(image_file_path, 'rb') as img_file:
+        img_byte_arr = img_file.read()
+
+    # encode in base64
+    img_base64_str = base64.b64encode(img_byte_arr).decode('utf-8')            
+
+    # resize
+    img_base64_str, _ = resize_base64_image(img_base64_str, settings)
+
+    # Use LLaVa to get image descriptions
+    server_url:str = f"{settings['llava_url']}/completion"
+    prompt:str = settings["prompt"]
+    header:str = {"Content-Type": "application/json"}
+    data = {
+        "image_data": [{"data": img_base64_str, "id": 1}],
+        "prompt": f"USER:[img-1] {prompt}\nASSISTANT:",
+        "n_predict": 512,
+        "temperature": 0.1
+    }
+    try:
+        response = requests.post(server_url, headers=header, json=data, timeout=10)
+        response_data = response.json()
+
+        if debug:
+            print(response_data)
+            print()
+    except requests.exceptions.Timeout:
+        print("Timeout")
+    except requests.exceptions.RequestException as e:
+        print(f"Exception: {str(e)}")
+    else:
         # get picture description and remove trailing spaces
-        alt_text = open_clip.decode(generated[0]).split("<end_of_text>")[0].replace("<start_of_text>", "").strip()
+        alt_text = response_data.get('content', '').strip()
 
-        # remove space before '.'
-        alt_text = alt_text.replace(' .', '.')
-    elif model_str == "llava":
+        # remove returns
+        alt_text = alt_text.replace('\r', '')
 
-        # read image as bytes
-        with open(image_file_path, 'rb') as img_file:
-            img_byte_arr = img_file.read()
+    return alt_text
 
-        # encode in base64
-        img_base64_str = base64.b64encode(img_byte_arr).decode('utf-8')            
+def gpt4(image_file_path: str, settings: dict, debug:bool=False) -> str:
+    """ get image description from GPT-4V """
+    alt_text:str = ""
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if api_key is None or api_key == "":
+        print("OPENAI_API_KEY not found in environment")
+    else:
+        # get image and convert to base64 str
+        with open(image_file_path, "rb") as image_file:
+            img_base64_str = base64.b64encode(image_file.read()).decode('utf-8')
 
         # resize
         resized_img_base64_str, extension = resize_base64_image(img_base64_str, settings)
 
-        # Use LLaVa to get image descriptions
-        server_url = f"{settings['llava_url']}/completion"
+        model = "gpt-4-vision-preview"
+        print(f"model: {model}")
         prompt = settings["prompt"]
-        header = {"Content-Type": "application/json"}
-        data = {
-            "image_data": [{"data": resized_img_base64_str, "id": 1}],
-            "prompt": f"USER:[img-1] {prompt}\nASSISTANT:",
-            "n_predict": 123,
-            "temp": 0.1
+        print(f"prompt: '{prompt}'")
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
         }
-        try:
-            response = requests.post(server_url, headers=header, json=data, timeout=10)
-            response_data = response.json()
-
-            if debug:
-                print(response_data)
-                print()
-        except requests.exceptions.Timeout:
-            print("Timeout")
-        except requests.exceptions.RequestException as e:
-            print(f"Exception: {str(e)}")
-        else:
-            # get picture description and remove trailing spaces
-            alt_text = response_data.get('content', '').strip()
-
-            # remove returns
-            alt_text = alt_text.replace('\r', '')
-    elif model_str == "gpt4":
-
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if api_key is None:
-            print("OPENAI_API_KEY not found in environment")
-        else:
-            # get image and convert to base64 str
-            with open(image_file_path, "rb") as image_file:
-                img_base64_str = base64.b64encode(image_file.read()).decode('utf-8')
-
-            # resize
-            resized_img_base64_str, extension = resize_base64_image(img_base64_str, settings)
-
-            model = "gpt-4-vision-preview"
-            print(f"model: {model}")
-            prompt = settings["prompt"]
-            print(f"prompt: '{prompt}'")
-
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}"
-            }
-            payload = {
-                "model": model,
-                "messages": [
+        payload = {
+            "model": model,
+            "messages": [
+            {
+                "role": "user",
+                "content": [
                 {
-                    "role": "user",
-                    "content": [
-                    {
-                        "type": "text",
-                        "text": prompt
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                        "url": f"data:image/{extension};base64,{resized_img_base64_str}"
-                        }
+                    "type": "text",
+                    "text": prompt
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                    "url": f"data:image/{extension};base64,{resized_img_base64_str}"
                     }
-                    ]
                 }
-                ],
-                "max_tokens": 300
+                ]
             }
+            ],
+            "max_tokens": 300
+        }
 
-            response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
 
-            json_out = response.json()
-            alt_text = json_out["choices"][0]["message"]["content"]
+        json_out = response.json()
+        alt_text = json_out["choices"][0]["message"]["content"]
 
-    return alt_text
+    return alt_text 
 
 def resize_base64_image(base64_str: str, settings: dict) -> [str, str]:
     """ resize base64_str image """
@@ -481,9 +549,13 @@ def resize_base64_image(base64_str: str, settings: dict) -> [str, str]:
 
     # resize image
     im = Image.open(io.BytesIO(image_bytes))
-    new_size = (settings["img_size"], settings["img_size"])
-    print(f"Resize image to {new_size}")
-    resized_im = im.resize(new_size)
+    px:int = settings["img_size"]
+    if px != 0:
+        new_size = (px, px)
+        print(f"Resize image to {new_size}")
+        resized_im = im.resize(new_size)
+    else:
+        resized_im = im
 
     # Convert the resized image back to bytes
     resized_im_bytes = io.BytesIO()
@@ -591,11 +663,11 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--server", type=str, default="http://localhost", help="LLaVA server URL, default=http://localhost")
     parser.add_argument("--port", type=str, default="8007", help="LLaVA server port, default=8007")
     # OpenCLIP
-    parser.add_argument("--openclip_models", action='store_true', default=False, help="Show OpenCLIP models and pre trained")
+    parser.add_argument("--openclip_models", action='store_true', default=False, help="show OpenCLIP models and pretrained")
     parser.add_argument("--openclip", type=str, default="coca_ViT-L-14", help="OpenCLIP model name")
     parser.add_argument("--pretrained", type=str, default="mscoco_finetuned_laion2B-s13B-b90k", help="OpenCLIP pretrained model")
     #
-    parser.add_argument("--img_resize", type=str, default="500", help="resize image width and heigh in pixels")
+    parser.add_argument("--resize", type=str, default="500", help="resize image to same width and height in pixels, default:500, use 0 to disable resize")
     #
     parser.add_argument("--prompt", type=str, default="", help="Custom prompt for Kosmos-2 or LLaVA")
     parser.add_argument("--save", action='store_true', default=False, help="flag to save powerpoint file with updated alt texts")
@@ -635,6 +707,7 @@ def main(argv: List[str]) -> int:
     else:
 
         settings = {
+            "generate": args.generate,
             "model": model_str,
             "kosmos2_model": None,
             "kosmos2_pretrained": None,
@@ -644,12 +717,12 @@ def main(argv: List[str]) -> int:
             "openclip-transform": None,
             "llava_url": f"{args.server}:{args.port}",
             "prompt": prompt,
-            "img_size": int(args.img_resize)
+            "img_size": int(args.resize)
         }
         if args.add_from_file != "":
             err = add_alt_text_from_file(powerpoint_file_name, args.add_from_file)
         else:
-            err = process_images_from_pptx(powerpoint_file_name, args.generate, settings, args.save, args.debug)
+            err = process_images_from_pptx(powerpoint_file_name, settings, args.save, args.debug)
 
     return int(err)
 

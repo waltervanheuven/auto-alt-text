@@ -58,11 +58,11 @@ def bool_to_string(b: bool) -> str:
 
 # see https://github.com/scanny/python-pptx/pull/512
 def shape_get_alt_text(shape: BaseShape) -> str:
-    """ Alt-text defined in shape's `descr` attribute, or '' if not present. """
+    """ Alt text is defined in shape's `descr` attribute, return this or '' if not present. """
     return shape._element._nvXxPr.cNvPr.attrib.get("descr", "")
 
 def shape_set_alt_text(shape: BaseShape, alt_text: str):
-    """ Set alt-text in shape """
+    """ Set alt text of shape """
     shape._element._nvXxPr.cNvPr.attrib["descr"] = alt_text
 
 # see https://stackoverflow.com/questions/63802783/check-if-image-is-decorative-in-powerpoint-using-python-pptx
@@ -175,8 +175,7 @@ def init_model(settings: dict) -> bool:
             print(f"Unable to access server at '{server_url}'.")
             err = True
     elif model_str == "gpt4":
-        print("GPT-4V model")
-        print(f"prompt: '{prompt}'")
+        print("GPT-4V")
     else:
         print(f"Unknown model: '{model_str}'")
         err = True
@@ -425,21 +424,28 @@ def generate_description(image_file_path: str, settings: dict, debug:bool=False)
             alt_text = alt_text.replace('\r', '')
     elif model_str == "gpt4":
 
-        prompt = settings["prompt"]
-
-        with open(image_file_path, "rb") as image_file:
-            img_base64_str = base64.b64encode(image_file.read()).decode('utf-8')
-
-        resized_img_base64_str, extension = resize_base64_image(img_base64_str, settings)
-
         api_key = os.environ.get("OPENAI_API_KEY")
-        if api_key is not None:
+        if api_key is None:
+            print("OPENAI_API_KEY not found in environment")
+        else:
+            # get image and convert to base64 str
+            with open(image_file_path, "rb") as image_file:
+                img_base64_str = base64.b64encode(image_file.read()).decode('utf-8')
+
+            # resize
+            resized_img_base64_str, extension = resize_base64_image(img_base64_str, settings)
+
+            model = "gpt-4-vision-preview"
+            print(f"model: {model}")
+            prompt = settings["prompt"]
+            print(f"prompt: '{prompt}'")
+
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key}"
             }
             payload = {
-                "model": "gpt-4-vision-preview",
+                "model": model,
                 "messages": [
                 {
                     "role": "user",
@@ -457,15 +463,13 @@ def generate_description(image_file_path: str, settings: dict, debug:bool=False)
                     ]
                 }
                 ],
-                "max_tokens": 125
+                "max_tokens": 300
             }
 
             response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
 
             json_out = response.json()
             alt_text = json_out["choices"][0]["message"]["content"]
-        else:
-            print("OPENAI_API_KEY not found in environment")
 
     return alt_text
 

@@ -82,7 +82,7 @@ python source/auto_alt_text.py pptx/test1.pptx --model openclip --generate --sav
 python source/auto_alt_text.py pptx/test1.pptx --openclip_models
 
 # specify specific OpenCLIP model and pretained model
-python source/auto_alt_text.py pptx/test1.pptx --model openclip --add --openclip coca_ViT-L-14 --pretrained mscoco_finetuned_laion2B-s13B-b90k
+python source/auto_alt_text.py pptx/test1.pptx --model openclip --openclip coca_ViT-L-14 --pretrained mscoco_finetuned_laion2B-s13B-b90k --generate
 ```
 
 ## LLaVA

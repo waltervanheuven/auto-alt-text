@@ -223,7 +223,7 @@ def process_shape(shape: BaseShape, images_shape: BaseShape, images, base_left, 
         # report alt text
         if not err:
             stored_alt_text = shape_get_alt_text(shape)
-            feedback = f"Slide: {slide_cnt + 1}, Picture: '{shape.name}', alt_text: '{stored_alt_text}', decorative: {bool_to_string(decorative)}"
+            feedback = f"Slide: {slide_cnt + 1}, Pict: {slide_image_cnt + 1}, alt_text: '{stored_alt_text}', decorative: {bool_to_string(decorative)}"
             print(feedback)
 
             if model_str == "":
@@ -293,7 +293,8 @@ def set_alt_text(shape: BaseShape, images, base_left, base_top, img_folder: str,
             images.append((image_group_part, left, top))
 
         # determine file name
-        image_file_name:str = f"s{num2str(max_slides, slide_cnt + 1)}p{num2str(99, image_cnt + 1)}_{shape.name}"
+        # image_file_name:str = f"s{num2str(max_slides, slide_cnt + 1)}p{num2str(99, image_cnt + 1)}_{shape.name}"
+        image_file_name:str = f"s{num2str(max_slides, slide_cnt + 1)}p{num2str(99, image_cnt + 1)}"
         image_file_path = os.path.join(img_folder, f"{image_file_name}.{extension}")
         print(f"Saving and processing image: '{image_file_path}'...")
 
@@ -432,7 +433,7 @@ def generate_description(image_file_path: str, settings: dict, debug:bool=False)
         resized_img_base64_str, extension = resize_base64_image(img_base64_str, settings)
 
         api_key = os.environ.get("OPENAI_API_KEY")
-        if api_key != "":
+        if api_key is not None:
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key}"
@@ -589,7 +590,7 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--openclip", type=str, default="coca_ViT-L-14", help="OpenCLIP model name")
     parser.add_argument("--pretrained", type=str, default="mscoco_finetuned_laion2B-s13B-b90k", help="OpenCLIP pretrained model")
     #
-    parser.add_argument("--img_resize", type=str, default="150", help="resize image width and heigh in pixels")
+    parser.add_argument("--img_resize", type=str, default="500", help="resize image width and heigh in pixels")
     #
     parser.add_argument("--prompt", type=str, default="", help="Custom prompt for Kosmos-2 or LLaVA")
     parser.add_argument("--save", action='store_true', default=False, help="flag to save powerpoint file with updated alt texts")

@@ -591,6 +591,7 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--server", type=str, default="http://localhost", help="LLaVA server URL, default=http://localhost")
     parser.add_argument("--port", type=str, default="8007", help="LLaVA server port, default=8007")
     # OpenCLIP
+    parser.add_argument("--openclip_models", action='store_true', default=False, help="Show OpenCLIP models and pre trained")
     parser.add_argument("--openclip", type=str, default="coca_ViT-L-14", help="OpenCLIP model name")
     parser.add_argument("--pretrained", type=str, default="mscoco_finetuned_laion2B-s13B-b90k", help="OpenCLIP pretrained model")
     #
@@ -606,6 +607,13 @@ def main(argv: List[str]) -> int:
 
     prompt:str = args.prompt
     model_str:str = args.model.lower()
+
+    if args.openclip_models:
+        openclip_models = open_clip.list_pretrained()
+        print("OpenCLIP models:")
+        for m, p in openclip_models:
+            print(f"Model: {m}, pretrained: {p}")
+        return int(err)
 
     # set default prompt
     if model_str == "gpt4":

@@ -670,9 +670,9 @@ def main(argv: List[str]) -> int:
     #
     parser.add_argument("--resize", type=str, default="500", help="resize image to same width and height in pixels, default:500, use 0 to disable resize")
     #
-    parser.add_argument("--prompt", type=str, default="", help="Custom prompt for Kosmos-2 or LLaVA")
+    parser.add_argument("--prompt", type=str, default="", help="custom prompt")
     parser.add_argument("--save", action='store_true', default=False, help="flag to save powerpoint file with updated alt texts")
-    parser.add_argument("--add_from_file", type=str, default="", help="Add alt texts from specified file to powerpoint file")
+    parser.add_argument("--add_from_file", type=str, default="", help="add alt texts from specified file to powerpoint file")
     #
     parser.add_argument("--debug", action='store_true', default=False, help="flag for debugging")
 

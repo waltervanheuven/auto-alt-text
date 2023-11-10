@@ -136,9 +136,9 @@ def process_images_from_pptx(file_path: str, settings: dict, savePP: bool, debug
 
         # write header
         if model_str != "" and generate:
-            fout.write(f"Model\tFile\tSlide\tPictName\tAlt_Text\tDecorative\tPictFilePath{os.linesep}")
+            fout.write(f"Model\tFile\tSlide\tObject\tAlt_Text\tDecorative\tPictFilePath{os.linesep}")
         else:
-            fout.write(f"File\tSlide\tPictName\tAlt_Text\tDecorative\tPictFilePath{os.linesep}")
+            fout.write(f"File\tSlide\tObject\tAlt_Text\tDecorative\tPictFilePath{os.linesep}")
 
         # total number of images in the pptx
         image_cnt:int = 0
@@ -153,7 +153,7 @@ def process_images_from_pptx(file_path: str, settings: dict, savePP: bool, debug
 
             image_cnt += param["slide_image_cnt"]
 
-    print(f"Powerpoint file contains {slide_cnt + 1} slides and in total {image_cnt} images.")
+    print(f"Powerpoint file contains {slide_cnt + 1} slides and in total {image_cnt} objects with alt text.")
 
     if generate and savePP:
         # Save file
@@ -226,13 +226,37 @@ def process_shape(shape: BaseShape, param: dict, settings: dict, debug: bool) ->
             #
 
             # combine alt text to generate the alt text for the group
-            alt_text = ""
-            for shape, _, _, txt in param["image_list"]:
-                alt_text = f"{alt_text} {txt}"
+            alt_text:str = ""
+            image_list = param["image_list"]
+            if len(image_list) > 1:
+                alt_text = f"There are {len(image_list)} images: "
+            for shape, _, _, txt in image_list:
+                if len(alt_text) == 0:
+                    alt_text = txt
+                else:
+                    alt_text = f"{alt_text} {txt}"
 
             # set alt text of group shape
             group_shape = param["images_shape"]
             set_alt_text(group_shape, alt_text)
+
+            # save group shape info
+            model_str = settings["model"]
+            fout = param["fout"]
+            image_file_path = ""
+            pptx_name = param["pptx_name"]
+            pptx_extension = param["pptx_extension"]
+            slide_cnt = param["slide_cnt"]
+            decorative:bool = is_decorative(group_shape)
+            stored_alt_text = get_alt_text(group_shape)
+
+            feedback = f"Slide: {slide_cnt + 1}, Group: {group_shape.name}, alt_text: '{stored_alt_text}', decorative: {bool_to_string(decorative)}"
+            print(feedback)
+
+            if model_str == "":
+                fout.write(f"{pptx_name}.{pptx_extension}\t{slide_cnt + 1}\t{group_shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)
+            else:
+                fout.write(f"{model_str}\t{pptx_name}.{pptx_extension}\t{slide_cnt + 1}\t{group_shape.name}\t{stored_alt_text}\t{bool_to_string(decorative)}\t{image_file_path}" + os.linesep)            
 
             # reset images
             param["image_list"] = None
@@ -618,7 +642,7 @@ def add_alt_text_from_file(file_path: str, file_path_txt_file: str) -> bool:
         # loop through shapes
         slide_image_cnt = 0
         for shape in slide.shapes:
-            image_cnt, slide_image_cnt = process_shapes_from_file(shape, csv_rows, image_cnt, slide_cnt, slide_image_cnt)
+            image_cnt, slide_image_cnt = process_shapes_from_file(shape, None, csv_rows, image_cnt, slide_cnt, slide_image_cnt)
 
     if not err:
         # Save file
@@ -628,17 +652,37 @@ def add_alt_text_from_file(file_path: str, file_path_txt_file: str) -> bool:
 
     return err
 
-def process_shapes_from_file(shape: BaseShape, csv_rows, image_cnt: int, slide_cnt:int, slide_image_cnt:int) -> int:
+def process_shapes_from_file(shape: BaseShape, group_shape: BaseShape, csv_rows, image_cnt: int, slide_cnt:int, slide_image_cnt:int) -> int:
     """ recursive function to process shapes and shapes within groups """
     # Check if the shape has a picture
     if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-        for embedded_shape in shape.shapes:
-            image_cnt, slide_image_cnt = process_shapes_from_file(embedded_shape, csv_rows, image_cnt, slide_cnt, slide_image_cnt)
+        group_shape = shape
 
-    elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-        decorative_pptx:bool = is_decorative(shape)
+        for embedded_shape in shape.shapes:
+            image_cnt, slide_image_cnt = process_shapes_from_file(embedded_shape, group_shape, csv_rows, image_cnt, slide_cnt, slide_image_cnt)
 
         # get decorative
+        decorative_pptx:bool = is_decorative(group_shape)
+        decorative:bool = bool_value(csv_rows[image_cnt][5])
+
+        # change decorative status
+        if decorative_pptx != decorative:
+            # set decorative status of image
+            print(f"Side: {slide_cnt}, {group_shape.name}, can't set the docorative status to: {bool_to_string(decorative)}")
+
+        alt_text: str = ""
+        if not decorative:
+            # get alt text from text file
+            alt_text = csv_rows[image_cnt][4]
+
+        # set alt text
+        set_alt_text(group_shape, alt_text)
+
+        image_cnt += 1
+
+    elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+        # get decorative
+        decorative_pptx:bool = is_decorative(shape)
         decorative:bool = bool_value(csv_rows[image_cnt][5])
 
         # change decorative status
@@ -698,7 +742,7 @@ def main(argv: List[str]) -> int:
     # set default prompt
     if model_str == "gpt-4v":
         if args.prompt == "":
-            prompt = "Describe in one sentence."
+            prompt = "Describe the image"
     elif model_str == "llava":
         if args.prompt == "":
             prompt = "Describe the image"

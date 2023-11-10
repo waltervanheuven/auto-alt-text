@@ -149,8 +149,3 @@ Add `--help` to show command line options.
 ```sh
 python source/auto_alt_text.py --help
 ```
-
-## Limitations
-
-- Script will save each image in a shape group. Ideally, it should combine them to create a combined image so that it can set the alt text of the shape group.
-- Grouped images or image/text groups should be saved to text file with alt text and these should be imported as well

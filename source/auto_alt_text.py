@@ -427,6 +427,7 @@ def process_object(shape:BaseShape, pptx:dict, settings:dict, debug:bool = False
     if group_shape is not None:
         part_of_group = "Yes"
 
+    alt_text:str = ""
     if not report:
         # Quick fix for alt text, doesn't work if shape contains text
         if shape.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:            
@@ -469,12 +470,12 @@ def process_object(shape:BaseShape, pptx:dict, settings:dict, debug:bool = False
 
         set_alt_text(shape, alt_text)        
 
-    # if part of group store alt_text
-    if group_shape is not None:
-        text_list = pptx["text_list"]
-        if text_list is not None:
-            text_list.append(alt_text)
-            pptx["text_list"] = text_list
+        # if part of group store alt_text
+        if group_shape is not None:
+            text_list = pptx["text_list"]
+            if text_list is not None:
+                text_list.append(alt_text)
+                pptx["text_list"] = text_list
 
     # report alt text
     slide_cnt:int = pptx["slide_cnt"]

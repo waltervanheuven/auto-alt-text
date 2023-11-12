@@ -11,6 +11,15 @@ The script supports currently the following models:
 
 Kosmos-2 and OpenCLIP run locally, and LLaVA can also be set up to run locally. GPT-4V requires API access. By default, images are resized to 500x500 pixels before inference.
 
+## Generate Accessibility report
+
+Show current alt text of images in a Powerpoint file and generate an alt text accessibility report. A tab-delimted text file is created with the alt text of each image in the Powerpoint file as well as the group shape alt text of image groups.
+
+```sh
+python source/auto_alt_text.py pptx/test1.pptx --report
+# output is written to `pptx/test1.txt`
+```
+
 ## Kosmos-2
 
 Example command for using [Kosmos-2](https://github.com/microsoft/unilm/tree/master/kosmos-2) to generate descriptions of images in Powerpoint files.
@@ -59,15 +68,6 @@ source venv/bin/activate
 
 pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
-```
-
-## Generate Accessibility report
-
-Show current alt text of images in a Powerpoint file and generate an alt text accessibility report. A tab-delimted text file is created with the alt text of each image in the Powerpoint file as well as the group shape alt text of image groups.
-
-```sh
-python source/auto_alt_text.py pptx/test1.pptx --report
-# output is written to `tmp/test1.txt`
 ```
 
 ## GPT-4V

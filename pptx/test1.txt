@@ -1,0 +1,13 @@
+Model	File	Slide	ObjectName	ObjectType	PartOfGroup	Alt_Text	LenAltText	Decorative	PictFilePath
+	test1.pptx	2	Picture 7	Picture	No		0	False	
+	test1.pptx	2	Picture 9	Picture	No		0	False	
+	test1.pptx	3	Picture 6	Picture	Yes		0	False	
+	test1.pptx	3	Picture 8	Picture	Yes		0	False	
+	test1.pptx	3	Group 9	Group	No		0	False	
+	test1.pptx	4	Picture 3	Picture	Yes		0	False	
+	test1.pptx	4	Picture 4	Picture	Yes		0	False	
+	test1.pptx	4	Picture 5	Picture	Yes		0	False	
+	test1.pptx	4	Group 7	Group	No		0	False	
+	test1.pptx	5	Picture 6	Picture	Yes		0	False	
+	test1.pptx	5	Group 9	Group	No		0	False	
+	test1.pptx	6	Picture 5	Picture	No		0	False	

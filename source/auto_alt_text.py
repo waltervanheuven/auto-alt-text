@@ -175,13 +175,17 @@ def process_images_from_pptx(file_path: str, settings: dict, savePP: bool, debug
         print()
         print(f"Powerpoint file contains {slide_cnt + 1} slides and in total {image_cnt} images with alt text.\n")
 
+        pptx_file:str = ""
         if not report and savePP:
             # Save new pptx file
-            new_pptx_file_name:str = os.path.join(dirname, f"{pptx_name}_{model_str}.{pptx_extension}")
+            new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_{model_str}.{pptx_extension}")
             print(f"Saving Powerpoint file with new alt-text to '{new_pptx_file_name}'\n")
             prs.save(new_pptx_file_name)
+            pptx_file = new_pptx_file_name
+        else:
+            pptx_file = file_path
 
-        accessibility_report(out_file_name, new_pptx_file_name, debug)
+        accessibility_report(out_file_name, pptx_file, debug)
 
     return err
 

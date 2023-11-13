@@ -1051,6 +1051,31 @@ def process_shapes_from_file(shape: BaseShape, group_shape_list: list[BaseShape]
 
     return group_shape_list, object_cnt, slide_object_cnt
 
+def remove_presenter_notes(file_path:str, debug:bool=False):
+    """ remove all presenter notes """
+    err:bool = False
+
+    # get name, extension, folder from Powerpoint file
+    file_name:str = os.path.basename(file_path)
+    pptx_name:str = file_name.split(".")[0]
+    pptx_extension:str = file_name.split(".")[1]
+    dirname:str = os.path.dirname(file_path)
+
+    # process powerpoint file
+    print(f"Processing Powerpoint file: {file_path}")
+    prs = Presentation(file_path)
+
+    # Loop through slides
+    object_cnt:int = 0
+    for slide_cnt, slide in enumerate(prs.slides):
+        slide.notes_slide.notes_text_frame.text = ""
+
+    new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_minus_notes.{pptx_extension}")
+    print(f"Saving Powerpoint file with new alt-text to '{new_pptx_file_name}'\n")
+    prs.save(new_pptx_file_name)
+
+    return err
+
 def main(argv: List[str]) -> int:
     """ main """
     err:bool = False
@@ -1072,6 +1097,7 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--prompt", type=str, default="", help="custom prompt")
     parser.add_argument("--save", action='store_true', default=False, help="flag to save powerpoint file with updated alt texts")
     parser.add_argument("--replace", type=str, default="", help="replace alt texts in pptx with those specified in file")
+    parser.add_argument("--remove_presenter_notes", action='store_true', default="", help="remove all presenter notes")
     #
     parser.add_argument("--debug", action='store_true', default=False, help="flag for debugging")
 
@@ -1123,6 +1149,8 @@ def main(argv: List[str]) -> int:
         if args.replace != "":
             # file with alt text provided
             err = replace_alt_texts(powerpoint_file_name, args.replace, args.debug)
+        elif args.remove_presenter_notes:
+            err = remove_presenter_notes(powerpoint_file_name, args.debug)
         else:
             err = process_images_from_pptx(powerpoint_file_name, settings, args.save, args.debug)
 

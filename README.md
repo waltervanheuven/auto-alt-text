@@ -9,7 +9,7 @@ The script supports currently the following models:
 - [GPT-4V](https://openai.com/research/gpt-4v-system-card)
 - [LLaVA](https://llava-vl.github.io)
 
-Kosmos-2 and OpenCLIP run locally, and LLaVA can also be set up to run locally. GPT-4V requires API access. By default, images are resized to 500x500 pixels before inference.
+Kosmos-2 and OpenCLIP run locally, and LLaVA can also be set up to run locally. GPT-4V requires API access. By default, images are resized so that width and height are max. 500 pixels before inference.
 
 ## Setup
 
@@ -21,7 +21,7 @@ pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
 
-## Generate Accessibility report
+## Generate accessibility report
 
 Show current alt text of objects (e.g. images, shapes, group shapes) in a Powerpoint file and generate an alt text accessibility report. A tab-delimited text file is created with the alt text of each object in the Powerpoint file.
 
@@ -136,7 +136,7 @@ python source/auto_alt_text.py pptx/test1.pptx --model llava --save
 python source/auto_alt_text.py pptx/test1.pptx --model llava --prompt "Describe in simple words using maximal 125 characters"
 ```
 
-## Edit generated alt text and apply to Powerpoint file
+## Edit generated alt texts and apply to Powerpoint file
 
 The generated alt texts are saved to a text file so that these it can be edited. You can apply the edited alt texts in the file to the powerpoint file using the option `--replace`. The Powerpoint file is saved as `<filename>_alt_text.pptx`.
 

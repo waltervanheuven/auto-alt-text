@@ -1,6 +1,6 @@
 # Auto-Alt-Text
 
-Automatically create `Alt Text` for images in Powerpoint presentations using Multimodal Large Language Models (MLLM) or Visual-Language (VL) pre-trained models. The Python script will create a text file with the generated `Alt Text` as well as apply these to the images in the PowerPoint file and save the updated Powerpoint to a new file.
+Automatically create `Alt Text` for images and other objects in Powerpoint presentations using Multimodal Large Language Models (MLLM) or Visual-Language (VL) pre-trained models. The Python script will create a text file with the generated `Alt Text` as well as apply these to the images and objects in the PowerPoint file and save the updated Powerpoint to a new file.
 
 The script supports currently the following models:
 
@@ -23,7 +23,7 @@ pip install -r requirements.txt
 
 ## Generate Accessibility report
 
-Show current alt text of images in a Powerpoint file and generate an alt text accessibility report. A tab-delimited text file is created with the alt text of each image in the Powerpoint file as well as the group shape alt text of image groups.
+Show current alt text of objects (e.g. images, shapes, group shapes) in a Powerpoint file and generate an alt text accessibility report. A tab-delimited text file is created with the alt text of each object in the Powerpoint file.
 
 ```sh
 python source/auto_alt_text.py pptx/test1.pptx --report
@@ -49,7 +49,7 @@ python source/auto_alt_text.py pptx/test1.pptx --model kosmos-2 --save --prompt 
 
 ## OpenCLIP
 
-The Python script can also use [OpenCLIP](https://github.com/mlfoundations/open_clip) to generate descriptions of images in Powerpoint files. There are many OpenCLIP models and pretrained models that you can use. To find out the available models, use `--show_openclip_models`. The default model is `coca_ViT-L-14` and the pretrained model is `mscoco_finetuned_laion2B-s13B-b90k` (~2.55Gb file will be downloaded).
+The Python script can also use [OpenCLIP](https://github.com/mlfoundations/open_clip) to generate descriptions of images in Powerpoint files. There are many OpenCLIP models and pretrained models that you can use. To find out the available models, use `--show_openclip_models`. The default model is `coca_ViT-L-14` and the pretrained model is `mscoco_finetuned_laion2B-s13B-b90k` (~2.55Gb model file will be downloaded).
 
 ```sh
 # only show alt text already available
@@ -138,7 +138,7 @@ python source/auto_alt_text.py pptx/test1.pptx --model llava --prompt "Describe 
 
 ## Edit generated alt text and apply to Powerpoint file
 
-The generated alt text is saved to a text file so that it can be edited. You can apply the edited alt text in the file to the powerpoint file using the command below. The Powerpoint file is saved as `<filename>_alt_text.pptx`.
+The generated alt texts are saved to a text file so that these it can be edited. You can apply the edited alt texts in the file to the powerpoint file using the option `--replace`. The Powerpoint file is saved as `<filename>_alt_text.pptx`.
 
 ```sh
 python source/auto_alt_text.py pptx/test1.pptx --replace pptx/test1_kosmos-2_edited.txt
@@ -154,4 +154,4 @@ python source/auto_alt_text.py --help
 
 ## Known issues
 
-- LLaVA not working when resizing image, use `--resize 0` to disable image resizing
+- LLaVA not working when resizing image, use `--resize 0` to disable image resizing.

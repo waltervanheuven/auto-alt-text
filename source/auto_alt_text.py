@@ -606,8 +606,8 @@ def process_shape_and_generate_alt_text(shape:BaseShape, pptx:dict, settings:dic
 
             if len(alt_text) > 0:
                 set_alt_text(shape, alt_text)
-            else:
-                print("Alt text is empty")
+            #else:
+            #    print("Alt text is empty")
 
     return err, image_file_path
 
@@ -658,7 +658,7 @@ def kosmos2(image_file_path: str, settings: dict, debug:bool=False) -> [str, boo
             image_embeds=None,
             image_embeds_position_mask=inputs["image_embeds_position_mask"].cuda(),
             use_cache=True,
-            max_new_tokens=128,
+            max_new_tokens=256,
         )
     else:
         generated_ids = model.generate(
@@ -668,7 +668,7 @@ def kosmos2(image_file_path: str, settings: dict, debug:bool=False) -> [str, boo
             image_embeds=None,
             image_embeds_position_mask=inputs["image_embeds_position_mask"],
             use_cache=True,
-            max_new_tokens=128,
+            max_new_tokens=256,
         )
 
     generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
@@ -1148,7 +1148,7 @@ def main(argv: List[str]) -> int:
         print(f"Error: File {powerpoint_file_name} not found.")
         err = True
     else:
-        cuda_available = torch.cuda.is_available()
+        cuda_available:bool = torch.cuda.is_available()
 
         settings:dict = {
             "report": args.report,

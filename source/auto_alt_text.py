@@ -11,6 +11,7 @@ import base64
 import csv
 import re
 import requests
+import pathlib
 from PIL import Image
 from pptx.oxml.ns import _nsmap
 from pptx import Presentation
@@ -82,9 +83,8 @@ def process_images_from_pptx(file_path: str, settings: dict, debug: bool = False
     err:bool = False
 
     # get name, extension, folder from Powerpoint file
-    file_name:str = os.path.basename(file_path)
-    pptx_name:str = file_name.split(".")[0]
-    pptx_extension:str = file_name.split(".")[1]
+    pptx_name:str = pathlib.Path(file_path).stem
+    pptx_extension:str = pathlib.Path(file_path).suffix
     dirname:str = os.path.dirname(file_path)
 
     report:bool = settings["report"]
@@ -178,7 +178,7 @@ def process_images_from_pptx(file_path: str, settings: dict, debug: bool = False
         pptx_file:str = ""
         if not report:
             # Save new pptx file
-            new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_{model_str}.{pptx_extension}")
+            new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_{model_str}{pptx_extension}")
             print(f"Saving Powerpoint file with new alt-text to '{new_pptx_file_name}'\n")
             prs.save(new_pptx_file_name)
             pptx_file = new_pptx_file_name
@@ -329,7 +329,7 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
                 print(f"Slide: {slide_cnt + 1}, Group: {group_shape.name}, alt_text: '{stored_alt_text}'")
 
             fout = pptx["fout"]
-            fout.write(f"{model_str}\t{pptx_name}.{pptx_extension}\t{slide_cnt + 1}\t{group_shape.name}\tGroup\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}\n")
+            fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{group_shape.name}\tGroup\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}\n")
 
             # remove last one
             group_shape_list = pptx["group_shape_list"]
@@ -366,7 +366,7 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
                 pptx_name:str = pptx["pptx_name"]
                 pptx_extension:str = pptx["pptx_extension"]
                 fout = pptx["fout"]
-                fout.write(f"{model_str}\t{pptx_name}.{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\tPicture\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}\n")
+                fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\tPicture\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}\n")
 
                 pptx["slide_image_cnt"] = slide_image_cnt + 1
 
@@ -496,7 +496,7 @@ def process_object(shape:BaseShape, pptx:dict, settings:dict, debug:bool = False
     pptx_name:str = pptx["pptx_name"]
     pptx_extension:str = pptx["pptx_extension"]
     fout = pptx["fout"]
-    fout.write(f"{model_str}\t{pptx_name}.{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\t{shape_type2str(shape.shape_type)}\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}\n")
+    fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\t{shape_type2str(shape.shape_type)}\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}\n")
 
 def cleanup_name_object(txt:str) -> str:
     """
@@ -924,9 +924,8 @@ def replace_alt_texts(file_path: str, file_path_txt_file: str, debug:bool = Fals
         return False
 
     # get name, extension, folder from Powerpoint file
-    file_name:str = os.path.basename(file_path)
-    name:str = file_name.split(".")[0]
-    extension:str = file_name.split(".")[1]
+    name:str = pathlib.Path(file_path).stem
+    extension:str = pathlib.Path(file_path).suffix
     dirname:str = os.path.dirname(file_path)
 
     # process txt file
@@ -956,7 +955,7 @@ def replace_alt_texts(file_path: str, file_path_txt_file: str, debug:bool = Fals
 
     if not err:
         # Save file
-        outfile:str = os.path.join(dirname, f"{name}_alt_text.{extension}")
+        outfile:str = os.path.join(dirname, f"{name}_alt_text{extension}")
         print(f"Saving Powerpoint file with new alt-text to: '{outfile}'")
         prs.save(outfile)
 
@@ -1073,9 +1072,8 @@ def remove_presenter_notes(file_path:str, debug:bool=False):
     err:bool = False
 
     # get name, extension, folder from Powerpoint file
-    file_name:str = os.path.basename(file_path)
-    pptx_name:str = file_name.split(".")[0]
-    pptx_extension:str = file_name.split(".")[1]
+    pptx_name:str = pathlib.Path(file_path).stem
+    pptx_extension:str = pathlib.Path(file_path).suffix
     dirname:str = os.path.dirname(file_path)
 
     # process powerpoint file
@@ -1087,7 +1085,7 @@ def remove_presenter_notes(file_path:str, debug:bool=False):
     for slide_cnt, slide in enumerate(prs.slides):
         slide.notes_slide.notes_text_frame.text = ""
 
-    new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_minus_notes.{pptx_extension}")
+    new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_minus_notes{pptx_extension}")
     print(f"Saving Powerpoint file with new alt-text to '{new_pptx_file_name}'\n")
     prs.save(new_pptx_file_name)
 

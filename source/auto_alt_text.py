@@ -10,17 +10,16 @@ import argparse
 import base64
 import csv
 import re
-import requests
 import pathlib
+import requests
 from PIL import Image
+import open_clip
+import torch
+from transformers import AutoProcessor, AutoModelForVision2Seq
 from pptx.oxml.ns import _nsmap
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.shapes.base import BaseShape
-import open_clip
-import torch
-from transformers import AutoProcessor, AutoModelForVision2Seq
-from openai import OpenAI
 
 def check_server_is_running(url: str) -> bool:
     """ URL accessible? """    
@@ -136,7 +135,7 @@ def process_images_from_pptx(file_path: str, settings: dict, debug: bool = False
         'slide_cnt': 0,
         'slide_image_cnt': 0
     }
-            
+
     # open file for writing
     with open(out_file_name, "w", encoding="utf-8") as fout:
         # store fout
@@ -240,7 +239,7 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
     """
     Recursive function to process shapes and shapes in groups on each slide
     """
-    err: bool = False    
+    err: bool = False
     report:bool = settings["report"]
 
     if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
@@ -264,20 +263,22 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
                 break
 
         if not err:
+            # check if group is not part of other group
+            group_shape_list:list[BaseShape] = pptx["group_shape_list"]
+            part_of_group:str = "No"
+            if len(group_shape_list) > 1:
+                part_of_group = "Yes"
+            elif len(group_shape_list) == 1:
+                part_of_group = "No_TopLevel"
+
+            # current group shape
+            group_shape:BaseShape = get_current_group_shape(pptx)
+
             # group contains at least one image
             #if pptx["image_list"] is not None:
             # new_img = combine_images_in_group(image_list, group_shape_list)
             # filename = os.path.join(img_folder, f'slide_{slide_cnt}_group.png')
             # new_img.save(filename)
-
-            # check if group is not part of other group
-            group_shape_list:list[BaseShape] = pptx["group_shape_list"]
-            part_of_group:str = "No"
-            if len(group_shape_list) > 1:
-                part_of_group:str = "Yes"
-            
-            # current group shape
-            group_shape:BaseShape = get_current_group_shape(pptx)
 
             alt_text:str = ""
             if not report:
@@ -294,7 +295,7 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
                 if len(alt_text) > 0:
                     alt_text = f"{alt_text}. "
 
-                # combine alt text to generate the alt text for the group                
+                # combine alt text to generate the alt text for the group
                 image_list:list = pptx["image_list"]
                 if len(image_list) > 1:
                     alt_text = f"{alt_text}There are {len(image_list)} images:"
@@ -373,7 +374,7 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
     elif shape.shape_type in [MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.LINE, MSO_SHAPE_TYPE.FREEFORM, \
                               MSO_SHAPE_TYPE.CHART, MSO_SHAPE_TYPE.IGX_GRAPHIC, MSO_SHAPE_TYPE.CANVAS, \
                               MSO_SHAPE_TYPE.MEDIA, MSO_SHAPE_TYPE.WEB_VIDEO]:
-    
+
         process_object(shape, pptx, settings, debug)
 
     elif shape.shape_type == MSO_SHAPE_TYPE.TEXT_BOX:
@@ -417,7 +418,6 @@ def shape_type2str(type) -> str:
         return "Media"
     elif type == MSO_SHAPE_TYPE.WEB_VIDEO:
         return "WebVideo"
-    
 
 def process_object(shape:BaseShape, pptx:dict, settings:dict, debug:bool = False) -> None:
     """ process """
@@ -435,45 +435,45 @@ def process_object(shape:BaseShape, pptx:dict, settings:dict, debug:bool = False
     alt_text:str = ""
     if not report:
         # Quick fix for alt text, doesn't work if shape contains text
-        if shape.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:            
+        if shape.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:
             if len(shape.name) > 0:
                 alt_text = f"A {cleanup_name_object(shape.name)} shape."
             else:
-                alt_text = f"A shape."
+                alt_text = "A shape."
         elif shape.shape_type == MSO_SHAPE_TYPE.CHART:
             if len(shape.name) > 0:
                 alt_text = f"A {cleanup_name_object(shape.name)} chart."
             else:
-                alt_text = f"A chart."
+                alt_text = "A chart."
         elif shape.shape_type == MSO_SHAPE_TYPE.LINE:
             if len(shape.name) > 0:
                 alt_text = f"A {cleanup_name_object(shape.name)} line."
             else:
-                alt_text = f"A line"
+                alt_text = "A line"
         elif shape.shape_type == MSO_SHAPE_TYPE.CANVAS:
             if len(shape.name) > 0:
                 alt_text = f"A {cleanup_name_object(shape.name)} canvas."
             else:
-                alt_text = f"A canvas."
+                alt_text = "A canvas."
         elif shape.shape_type == MSO_SHAPE_TYPE.FREEFORM:
             if len(shape.name) > 0:
                 alt_text = f"A {cleanup_name_object(shape.name)} freeform shape."
             else:
-                alt_text = f"A freeform shape."
+                alt_text = "A freeform shape."
         elif shape.shape_type == MSO_SHAPE_TYPE.MEDIA:
             if len(shape.name) > 0:
                 alt_text = f"A media object entitled '{cleanup_name_object(shape.name)}'"
             else:
-                alt_text = f"A media object."
+                alt_text = "A media object."
         elif shape.shape_type == MSO_SHAPE_TYPE.WEB_VIDEO:
             if len(shape.name) > 0:
                 alt_text = f"A web video entitled '{cleanup_name_object(shape.name)}'"
             else:
-                alt_text = f"A web video."
+                alt_text = "A web video."
         else:
             alt_text = f"{shape.name.lower()}"
 
-        set_alt_text(shape, alt_text)        
+        set_alt_text(shape, alt_text)
 
         # if part of group store alt_text
         if group_shape is not None:
@@ -636,7 +636,7 @@ def kosmos2(image_file_path: str, settings: dict, debug:bool=False) -> [str, boo
 
     # read image
     im = Image.open(image_file_path)
-    
+
     # resize image
     im = resize(im, settings)
 
@@ -647,7 +647,7 @@ def kosmos2(image_file_path: str, settings: dict, debug:bool=False) -> [str, boo
 
     processor:str = settings["kosmos2-processor"]
     model:str = settings["kosmos2-model"]
-    
+
     print("Generating alt text...")
     inputs = processor(text=prompt, images=im, return_tensors="pt")
     if settings["cuda_available"]:
@@ -705,7 +705,7 @@ def openclip(image_file_path: str, settings: dict, debug:bool=False) -> [str, bo
 
     # read image
     im = Image.open(image_file_path).convert("RGB")
-    
+
     # resize image
     im = resize(im, settings)
 
@@ -790,14 +790,14 @@ def img_file_to_base64(image_file_path:str , settings: dict, debug:bool=False) -
     # check
     buffer = io.BytesIO()
     im.save(buffer, format=original_img.format.upper())
-    buffer.seek(0)       
+    buffer.seek(0)
 
     # Encode the image bytes to Base64
     base64_bytes = base64.b64encode(buffer.getvalue())
 
     # str
     base64_str = base64_bytes.decode('utf-8')
-    
+
     return base64_str
 
 def gpt4v(image_file_path: str, extension:str, settings: dict, debug:bool=False) -> [str, bool]:
@@ -866,7 +866,7 @@ def gpt4v(image_file_path: str, extension:str, settings: dict, debug:bool=False)
             if debug:
                 print(json_out)
             err = True
-    
+
     return alt_text, err
 
 def accessibility_report(out_file_name: str, pptx_file_name: str, debug:bool = False) -> None:
@@ -900,7 +900,7 @@ def accessibility_report(out_file_name: str, pptx_file_name: str, debug:bool = F
                 alt_text_list.append(int(row[7]))
             elif len(row) != 10:
                 print(f"Unexpected row length: {len(row)}, row: {row}")
-                
+
     print(f"Images: {img_cnt}")
     print(f"Objects: {csv_reader.line_num - 1}")
 
@@ -1019,7 +1019,7 @@ def process_shapes_from_file(shape: BaseShape, group_shape_list: list[BaseShape]
 
         # set alt text
         set_alt_text(shape, alt_text)
-        
+
         slide_object_cnt += 1
         object_cnt += 1
 
@@ -1046,7 +1046,7 @@ def process_shapes_from_file(shape: BaseShape, group_shape_list: list[BaseShape]
 
         slide_object_cnt += 1
         object_cnt += 1
-        
+
     elif shape.shape_type == MSO_SHAPE_TYPE.TEXT_BOX:
 
         decorative_pptx:bool = is_decorative(shape)

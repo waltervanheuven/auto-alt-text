@@ -13,12 +13,39 @@ Kosmos-2 and OpenCLIP run locally, and LLaVA can also be set up to run locally. 
 
 ## Setup
 
+### macOS/Linux
+
+Install latest Python3.11 on macOS using [brew](https://brew.sh).
+
 ```sh
+git clone https://github.com/waltervanheuven/auto-alt-text.git
+cd auto-alt-text
+
 python3 -m venv venv
 source venv/bin/activate
 
 pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
+```
+
+For cuda support, follow instructions on the [PyTorch website](https://pytorch.org/get-started/locally/) to install the correct torch version.
+
+### Windows
+
+Install latest Python3.11 on Windows using, for example, [scoop](https://scoop.sh).
+
+```sh
+git clone https://github.com/waltervanheuven/auto-alt-text.git
+cd auto-alt-text
+
+python311 -m venv venv
+.\venv\Scripts\activate
+
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
+
+# for cuda support install torch (cuda 12.1)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 ```
 
 ## Generate accessibility report

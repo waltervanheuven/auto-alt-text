@@ -74,7 +74,7 @@ def is_decorative(shape) -> bool:
     adec_decoratives = cNvPr.xpath(".//adec:decorative[@val='1']")
     return bool(adec_decoratives)
 
-def process_images_from_pptx(file_path: str, settings: dict, savePP: bool, debug: bool = False) -> bool:
+def process_images_from_pptx(file_path: str, settings: dict, debug: bool = False) -> bool:
     """
     Loop through images in the slides of a Powerpint file and set image description based 
     on image description from Kosmos-2, OpenCLIP, or LLaVA
@@ -143,7 +143,7 @@ def process_images_from_pptx(file_path: str, settings: dict, savePP: bool, debug
         pptx["fout"] = fout
 
         # write header
-        fout.write(f"Model\tFile\tSlide\tObjectName\tObjectType\tPartOfGroup\tAlt_Text\tLenAltText\tDecorative\tPictFilePath{os.linesep}")
+        fout.write(f"Model\tFile\tSlide\tObjectName\tObjectType\tPartOfGroup\tAlt_Text\tLenAltText\tDecorative\tPictFilePath\n")
 
         # total number of images in the pptx
         image_cnt:int = 0
@@ -176,7 +176,7 @@ def process_images_from_pptx(file_path: str, settings: dict, savePP: bool, debug
         print(f"Powerpoint file contains {slide_cnt + 1} slides and in total {image_cnt} images with alt text.\n")
 
         pptx_file:str = ""
-        if not report and savePP:
+        if not report:
             # Save new pptx file
             new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_{model_str}.{pptx_extension}")
             print(f"Saving Powerpoint file with new alt-text to '{new_pptx_file_name}'\n")
@@ -200,8 +200,13 @@ def init_model(settings: dict) -> bool:
         model_name:str = "microsoft/kosmos-2-patch14-224"
         print(f"Kosmos-2 model: '{model_name}'")
         print(f"prompt: '{prompt}'")
-        settings["kosmos2-model"] = AutoModelForVision2Seq.from_pretrained(model_name)
-        settings["kosmos2-processor"] = AutoProcessor.from_pretrained(model_name)
+        m = AutoModelForVision2Seq.from_pretrained(model_name)
+        p = AutoProcessor.from_pretrained(model_name)
+        if settings["cuda_available"]:
+            print("Using CUDA.")
+            m.cuda()
+        settings["kosmos2-model"] = m
+        settings["kosmos2-processor"] = p
     elif model_str == "openclip":
         # OpenCLIP
         print(f"OpenCLIP model: '{settings['openclip_model_name']}'\npretrained model: '{settings['openclip_pretrained']}'")
@@ -324,7 +329,7 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
                 print(f"Slide: {slide_cnt + 1}, Group: {group_shape.name}, alt_text: '{stored_alt_text}'")
 
             fout = pptx["fout"]
-            fout.write(f"{model_str}\t{pptx_name}.{pptx_extension}\t{slide_cnt + 1}\t{group_shape.name}\tGroup\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}" + os.linesep)
+            fout.write(f"{model_str}\t{pptx_name}.{pptx_extension}\t{slide_cnt + 1}\t{group_shape.name}\tGroup\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}\n")
 
             # remove last one
             group_shape_list = pptx["group_shape_list"]
@@ -361,7 +366,7 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
                 pptx_name:str = pptx["pptx_name"]
                 pptx_extension:str = pptx["pptx_extension"]
                 fout = pptx["fout"]
-                fout.write(f"{model_str}\t{pptx_name}.{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\tPicture\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}" + os.linesep)
+                fout.write(f"{model_str}\t{pptx_name}.{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\tPicture\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}\n")
 
                 pptx["slide_image_cnt"] = slide_image_cnt + 1
 
@@ -491,7 +496,7 @@ def process_object(shape:BaseShape, pptx:dict, settings:dict, debug:bool = False
     pptx_name:str = pptx["pptx_name"]
     pptx_extension:str = pptx["pptx_extension"]
     fout = pptx["fout"]
-    fout.write(f"{model_str}\t{pptx_name}.{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\t{shape_type2str(shape.shape_type)}\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}" + os.linesep)
+    fout.write(f"{model_str}\t{pptx_name}.{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\t{shape_type2str(shape.shape_type)}\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}\n")
 
 def cleanup_name_object(txt:str) -> str:
     """
@@ -645,15 +650,27 @@ def kosmos2(image_file_path: str, settings: dict, debug:bool=False) -> [str, boo
     
     print("Generating alt text...")
     inputs = processor(text=prompt, images=im, return_tensors="pt")
-    generated_ids = model.generate(
-        pixel_values=inputs["pixel_values"],
-        input_ids=inputs["input_ids"],
-        attention_mask=inputs["attention_mask"],
-        image_embeds=None,
-        image_embeds_position_mask=inputs["image_embeds_position_mask"],
-        use_cache=True,
-        max_new_tokens=128,
-    )
+    if settings["cuda_available"]:
+        generated_ids = model.generate(
+            pixel_values=inputs["pixel_values"].cuda(),
+            input_ids=inputs["input_ids"].cuda(),
+            attention_mask=inputs["attention_mask"].cuda(),
+            image_embeds=None,
+            image_embeds_position_mask=inputs["image_embeds_position_mask"].cuda(),
+            use_cache=True,
+            max_new_tokens=128,
+        )
+    else:
+        generated_ids = model.generate(
+            pixel_values=inputs["pixel_values"],
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
+            image_embeds=None,
+            image_embeds_position_mask=inputs["image_embeds_position_mask"],
+            use_cache=True,
+            max_new_tokens=128,
+        )
+
     generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
     # Specify `cleanup_and_extract=False` in order to see the raw model generation.
@@ -1131,6 +1148,7 @@ def main(argv: List[str]) -> int:
         print(f"Error: File {powerpoint_file_name} not found.")
         err = True
     else:
+        cuda_available = torch.cuda.is_available()
 
         settings:dict = {
             "report": args.report,
@@ -1143,6 +1161,7 @@ def main(argv: List[str]) -> int:
             "openclip-transform": None,
             "llava_url": f"{args.server}:{args.port}",
             "gpt4v_model": "gpt-4-vision-preview",
+            "cuda_available": cuda_available,
             "prompt": prompt,
             "img_size": int(args.resize)
         }
@@ -1152,7 +1171,7 @@ def main(argv: List[str]) -> int:
         elif args.remove_presenter_notes:
             err = remove_presenter_notes(powerpoint_file_name, args.debug)
         else:
-            err = process_images_from_pptx(powerpoint_file_name, settings, args.save, args.debug)
+            err = process_images_from_pptx(powerpoint_file_name, settings, args.debug)
 
     return int(err)
 

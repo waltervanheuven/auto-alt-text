@@ -1130,7 +1130,7 @@ def export_slides_to_images(file_path:str, debug:bool=False):
         powerpoint.Quit()
         
     else:
-        print("Unable to export images to PNG on macOS.")
+        print("Unable to export images to PNG on macOS/Linux.")
    
     return False
 

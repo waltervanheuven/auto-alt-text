@@ -8,6 +8,7 @@ import sys
 import io
 import argparse
 import base64
+import platform
 import csv
 import re
 import pathlib
@@ -274,11 +275,15 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
             # current group shape
             group_shape:BaseShape = get_current_group_shape(pptx)
 
+            # image list
+            image_list:list = pptx["image_list"]
+
             # group contains at least one image
-            #if pptx["image_list"] is not None:
-            # new_img = combine_images_in_group(image_list, group_shape_list)
-            # filename = os.path.join(img_folder, f'slide_{slide_cnt}_group.png')
-            # new_img.save(filename)
+            # if image_list is not None and len(image_list) > 0:
+            #     new_img = combine_images_in_group(image_list, group_shape)
+            #     img_folder = pptx["img_folder"]
+            #     filename = os.path.join(img_folder, f'slide_{pptx["slide_cnt"]}_group.png')
+            #     new_img.save(filename)
 
             alt_text:str = ""
             if not report:
@@ -296,7 +301,7 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
                     alt_text = f"{alt_text}. "
 
                 # combine alt text to generate the alt text for the group
-                image_list:list = pptx["image_list"]
+                
                 if len(image_list) > 1:
                     alt_text = f"{alt_text}There are {len(image_list)} images:"
                 for shape, _, _, txt in image_list:
@@ -311,6 +316,9 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
                 set_alt_text(group_shape, alt_text)
             else:
                 alt_text = get_alt_text(group_shape)
+                
+                # remove returns
+                alt_text = remove_newline(alt_text)
 
             # get vars
             model_str:str = settings["model"]
@@ -391,6 +399,10 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
         print(f"=> OBJECT: {shape.name}, type: {shape.shape_type}")
 
     return err
+
+def remove_newline(txt: str) -> str:
+    txt = txt.replace('\n', ' ')
+    return txt
 
 def get_current_group_shape(pptx:dict) -> BaseShape:
     group_shape_list:list[BaseShape] = pptx["group_shape_list"]
@@ -523,7 +535,7 @@ def combine_images_in_group(images, group_shape):
     """
 
     # EMU per Pixel estimate: not correct
-    EMU_PER_PIXEL:int = int(914400 / 96)
+    EMU_PER_PIXEL:int = int(914400 / 300)
 
     # Determine the size of the new image based on the group shape size
     new_img_width = int(group_shape.width / EMU_PER_PIXEL)
@@ -532,6 +544,7 @@ def combine_images_in_group(images, group_shape):
 
     # Paste each image into the new image at its relative position
     for image, left, top, alt_text in images:
+        print(f"img: {image.width}, {image.height}, {left}, {top}")
         new_img.paste(image, (int(left / EMU_PER_PIXEL), int(top / EMU_PER_PIXEL)))
 
     return new_img
@@ -589,6 +602,9 @@ def process_shape_and_generate_alt_text(shape:BaseShape, pptx:dict, settings:dic
             alt_text, err = generate_description(image_file_path, extension, settings)
         else:
             alt_text = get_alt_text(shape)
+
+            # remove returns
+            alt_text = remove_newline(alt_text)
 
         if not err:
             # Keep image in case the image is part of a group
@@ -775,7 +791,7 @@ def llava(image_file_path: str, extension:str, settings: dict, debug:bool=False)
         alt_text = response_data.get('content', '').strip()
 
         # remove returns
-        alt_text = alt_text.replace('\r', '')
+        alt_text = remove_newline(alt_text)        
 
     return alt_text, err
 
@@ -1091,6 +1107,33 @@ def remove_presenter_notes(file_path:str, debug:bool=False):
 
     return err
 
+def export_slides_to_images(file_path:str, debug:bool=False):
+    """ export slides to PNG, Windows ONLY and requires that Powerpoint is installed """
+    if platform.system() == "Windows":
+        import comtypes.client
+
+        dirname:str = os.path.dirname(file_path)
+        pptx_name:str = pathlib.Path(file_path).stem
+        path_to_folder_to_save = os.path.join(dirname, pptx_name, "png")
+
+        powerpoint = comtypes.client.CreateObject("Powerpoint.Application")
+        powerpoint.Visible = 1
+        presentation = powerpoint.Presentations.Open(file_path)
+    
+        if not os.path.exists(path_to_folder_to_save):
+            os.makedirs(path_to_folder_to_save)
+
+        for i, slide in enumerate(presentation.Slides):
+            slide.Export(f"{path_to_folder_to_save}/slide{i+1}.jpg", "JPG")
+
+        presentation.Close()
+        powerpoint.Quit()
+        
+    else:
+        print("Unable to export images to PNG on macO.")
+   
+    return False
+
 def main(argv: List[str]) -> int:
     """ main """
     err:bool = False
@@ -1113,6 +1156,7 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--save", action='store_true', default=False, help="flag to save powerpoint file with updated alt texts")
     parser.add_argument("--replace", type=str, default="", help="replace alt texts in pptx with those specified in file")
     parser.add_argument("--remove_presenter_notes", action='store_true', default="", help="remove all presenter notes")
+    parser.add_argument("--export_img", action='store_true', default="", help="export pptx to png images")
     #
     parser.add_argument("--debug", action='store_true', default=False, help="flag for debugging")
 
@@ -1168,6 +1212,8 @@ def main(argv: List[str]) -> int:
             err = replace_alt_texts(powerpoint_file_name, args.replace, args.debug)
         elif args.remove_presenter_notes:
             err = remove_presenter_notes(powerpoint_file_name, args.debug)
+        elif args.export_img:
+            err = export_slides_to_images(powerpoint_file_name, args.debug)
         else:
             err = process_images_from_pptx(powerpoint_file_name, settings, args.debug)
 

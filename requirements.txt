@@ -5,3 +5,4 @@ open_clip_torch
 transformers
 torch
 openai
+comtypes; platform_system == "Windows"

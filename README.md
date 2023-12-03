@@ -2,14 +2,14 @@
 
 Automatically create `Alt Text` for images and other objects in Powerpoint presentations using Multimodal Large Language Models (MLLM) or Visual-Language (VL) pre-trained models. The Python script will create a text file with the generated `Alt Text` as well as apply these to the images and objects in the PowerPoint file and save the updated Powerpoint to a new file.
 
-The script supports currently the following models:
+The script currently supports the following models:
 
 - [Kosmos-2](https://github.com/microsoft/unilm/tree/master/kosmos-2)
 - [OpenCLIP](https://github.com/mlfoundations/open_clip)
 - [GPT-4V](https://openai.com/research/gpt-4v-system-card)
 - [LLaVA](https://llava-vl.github.io)
 
-Kosmos-2 and OpenCLIP run locally, and LLaVA can also be set up to run locally. GPT-4V requires API access. By default, images are resized so that width and height are max. 500 pixels before inference.
+Kosmos-2 and OpenCLIP run locally, and LLaVA can also be set up to run locally. GPT-4V requires API access. By default, images are resized so that width and height are maximum 500 pixels before inference.
 
 ## Setup
 

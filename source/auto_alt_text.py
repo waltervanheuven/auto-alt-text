@@ -64,7 +64,10 @@ def get_alt_text(shape: BaseShape) -> str:
 
 def set_alt_text(shape: BaseShape, alt_text: str) -> None:
     """ Set alt text of shape """
-    shape._element._nvXxPr.cNvPr.attrib["descr"] = alt_text
+    try:
+        shape._element._nvXxPr.cNvPr.attrib["descr"] = alt_text
+    except Exception as e:
+        print(f"--> Unable to set alt_text: {shape.shape_type}, {shape.name}\n{str(e)}\nAlt_text: {alt_text}")
 
 # see https://stackoverflow.com/questions/63802783/check-if-image-is-decorative-in-powerpoint-using-python-pptx
 def is_decorative(shape) -> bool:
@@ -291,7 +294,7 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
                 text_list:list = pptx["text_list"]
                 for n, txt in enumerate(text_list):
                     # remove newlines
-                    txt = txt.replace("\n", " ")
+                    txt = replace_newline_with_space(txt)
                     if n == 0:
                         alt_text = txt
                     else:
@@ -306,7 +309,7 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
                     alt_text = f"{alt_text}There are {len(image_list)} images:"
                 for shape, _, _, txt in image_list:
                     # remove newlines
-                    txt = txt.replace("\n", " ")
+                    txt = replace_newline_with_space(txt)
                     if len(alt_text) == 0:
                         alt_text = txt
                     else:
@@ -318,7 +321,7 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
                 alt_text = get_alt_text(group_shape)
                 
                 # remove returns
-                alt_text = remove_newline(alt_text)
+                alt_text = replace_newline_with_space(alt_text)
 
             # get vars
             model_str:str = settings["model"]
@@ -381,7 +384,8 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
 
     elif shape.shape_type in [MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.LINE, MSO_SHAPE_TYPE.FREEFORM, \
                               MSO_SHAPE_TYPE.CHART, MSO_SHAPE_TYPE.IGX_GRAPHIC, MSO_SHAPE_TYPE.CANVAS, \
-                              MSO_SHAPE_TYPE.MEDIA, MSO_SHAPE_TYPE.WEB_VIDEO]:
+                              MSO_SHAPE_TYPE.MEDIA, MSO_SHAPE_TYPE.WEB_VIDEO, MSO_SHAPE_TYPE.DIAGRAM, \
+                              MSO_SHAPE_TYPE.OLE_CONTROL_OBJECT, MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT]:
 
         process_object(shape, pptx, settings, debug)
 
@@ -400,9 +404,10 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
 
     return err
 
-def remove_newline(txt: str) -> str:
-    txt = txt.replace('\n', ' ')
-    return txt
+def replace_newline_with_space(txt: str) -> str:
+    """ replace newline with space and replace tab with space """
+    s = " ".join(txt.splitlines())
+    return s.replace("\t", " ")
 
 def get_current_group_shape(pptx:dict) -> BaseShape:
     group_shape_list:list[BaseShape] = pptx["group_shape_list"]
@@ -412,10 +417,10 @@ def get_current_group_shape(pptx:dict) -> BaseShape:
         return None
 
 def shape_type2str(type) -> str:
-    if type == MSO_SHAPE_TYPE.LINE:
+    if type == MSO_SHAPE_TYPE.AUTO_SHAPE:
+        return "Auto shape"
+    elif type == MSO_SHAPE_TYPE.LINE:
         return "Line"
-    elif type == MSO_SHAPE_TYPE.AUTO_SHAPE:
-        return "AutoShape"
     elif type == MSO_SHAPE_TYPE.IGX_GRAPHIC:
         return "IgxGraphic"
     elif type == MSO_SHAPE_TYPE.CHART:
@@ -430,6 +435,12 @@ def shape_type2str(type) -> str:
         return "Media"
     elif type == MSO_SHAPE_TYPE.WEB_VIDEO:
         return "WebVideo"
+    elif type == MSO_SHAPE_TYPE.DIAGRAM:
+        return "Diagram"
+    elif type == MSO_SHAPE_TYPE.OLE_CONTROL_OBJECT:
+        return "Control object"
+    elif type == MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT:
+        return "Embedded object"
 
 def process_object(shape:BaseShape, pptx:dict, settings:dict, debug:bool = False) -> None:
     """ process """
@@ -439,6 +450,9 @@ def process_object(shape:BaseShape, pptx:dict, settings:dict, debug:bool = False
     decorative:bool = is_decorative(shape)
     report:bool = settings["report"]
 
+    # include all text inside shape?
+    include_all_paragraphs = True
+
     group_shape:BaseShape = get_current_group_shape(pptx)
     part_of_group:str = "No"
     if group_shape is not None:
@@ -446,44 +460,90 @@ def process_object(shape:BaseShape, pptx:dict, settings:dict, debug:bool = False
 
     alt_text:str = ""
     if not report:
-        # Quick fix for alt text, doesn't work if shape contains text
+        # Quick fix for alt text of shapes
         if shape.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:
             if len(shape.name) > 0:
-                alt_text = f"A {cleanup_name_object(shape.name)} shape."
+                alt_text = f"A {cleanup_name_object(shape.name)} auto shape"
             else:
-                alt_text = "A shape."
+                alt_text = "An auto shape"
         elif shape.shape_type == MSO_SHAPE_TYPE.CHART:
             if len(shape.name) > 0:
-                alt_text = f"A {cleanup_name_object(shape.name)} chart."
+                if cleanup_name_object(shape.name.lower()) != "chart":
+                    # avoid duplication chart
+                    alt_text = f"A {cleanup_name_object(shape.name)} chart"
+                else:
+                    alt_text = f"A {cleanup_name_object(shape.name)}"
             else:
-                alt_text = "A chart."
+                alt_text = "A chart"
+
+            # add title of chart to alt_text
+            the_chart = shape.chart
+            if the_chart.has_title and len(the_chart.chart_title.text_frame.text.strip()) > 0:
+                alt_text = f"{alt_text} entitled '{the_chart.chart_title.text_frame.text}'"
+
         elif shape.shape_type == MSO_SHAPE_TYPE.LINE:
             if len(shape.name) > 0:
-                alt_text = f"A {cleanup_name_object(shape.name)} line."
+                alt_text = f"A {cleanup_name_object(shape.name)} line"
             else:
                 alt_text = "A line"
         elif shape.shape_type == MSO_SHAPE_TYPE.CANVAS:
             if len(shape.name) > 0:
-                alt_text = f"A {cleanup_name_object(shape.name)} canvas."
+                alt_text = f"A {cleanup_name_object(shape.name)} canvas"
             else:
-                alt_text = "A canvas."
+                alt_text = "A canvas"
         elif shape.shape_type == MSO_SHAPE_TYPE.FREEFORM:
             if len(shape.name) > 0:
-                alt_text = f"A {cleanup_name_object(shape.name)} freeform shape."
+                alt_text = f"A {cleanup_name_object(shape.name)} freeform shape"
             else:
-                alt_text = "A freeform shape."
+                alt_text = "A freeform shape"
         elif shape.shape_type == MSO_SHAPE_TYPE.MEDIA:
             if len(shape.name) > 0:
                 alt_text = f"A media object entitled '{cleanup_name_object(shape.name)}'"
             else:
-                alt_text = "A media object."
+                alt_text = "A media object"
         elif shape.shape_type == MSO_SHAPE_TYPE.WEB_VIDEO:
             if len(shape.name) > 0:
                 alt_text = f"A web video entitled '{cleanup_name_object(shape.name)}'"
             else:
-                alt_text = "A web video."
+                alt_text = "A web video"
+        elif shape.shape_type == MSO_SHAPE_TYPE.DIAGRAM:
+            if len(shape.name) > 0:
+                alt_text = f"A {shape.name} diagram"
+            else:
+                alt_text = "A diagram"
+        elif shape.shape_type == MSO_SHAPE_TYPE.OLE_CONTROL_OBJECT:
+            if len(shape.name) > 0:
+                alt_text = f"A {shape.name} control object"
+            else:
+                alt_text = "A control object"
+        elif shape.shape_type == MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT:
+            if len(shape.name) > 0:
+                alt_text = f"A {shape.name} embedded object"
+            else:
+                alt_text = "An embedded object"
         else:
             alt_text = f"{shape.name.lower()}"
+
+        # indicate the text inside the shape
+        if shape.has_text_frame:
+            if len(shape.text_frame.paragraphs) == 1 and shape.text_frame.paragraphs[0].text != "":
+                alt_text = f"{alt_text} with inside the text: {remove_newlines(shape.text_frame.paragraphs[0].text).strip()}"
+            else:
+                if not include_all_paragraphs:
+                    alt_text = f"{alt_text} with text inside."
+                else:
+                    first = True
+                    for p in shape.text_frame.paragraphs:
+                        if p.text != "":
+                            if first:
+                                alt_text = f"{alt_text} with inside the text:"
+                                first = False
+
+                            alt_text = f"{alt_text} {remove_newlines(p.text).strip()}"
+
+        # make sure alt text ends with a final stop
+        if not alt_text.endswith("."):
+            alt_text = f"{alt_text}."
 
         set_alt_text(shape, alt_text)
 
@@ -509,6 +569,11 @@ def process_object(shape:BaseShape, pptx:dict, settings:dict, debug:bool = False
     pptx_extension:str = pptx["pptx_extension"]
     fout = pptx["fout"]
     fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\t{shape_type2str(shape.shape_type)}\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}\n")
+
+def remove_newlines(txt:str) -> str:
+    """ remove newlines and replace tabs with spaces """
+    s = "".join(txt.splitlines())
+    return s.replace("\t", " ")
 
 def cleanup_name_object(txt:str) -> str:
     """
@@ -604,7 +669,7 @@ def process_shape_and_generate_alt_text(shape:BaseShape, pptx:dict, settings:dic
             alt_text = get_alt_text(shape)
 
             # remove returns
-            alt_text = remove_newline(alt_text)
+            alt_text = replace_newline_with_space(alt_text)
 
         if not err:
             # Keep image in case the image is part of a group
@@ -649,6 +714,10 @@ def generate_description(image_file_path: str, extension:str, settings: dict, de
 def kosmos2(image_file_path: str, settings: dict, debug:bool=False) -> [str, bool]:
     """ get image description from Kosmos-2 """
     err:bool = False
+
+    # skip wmf because it cannot be openend
+    if image_file_path.endswith(".wmf"):
+        return "A windows metafile", err
 
     # read image
     im = Image.open(image_file_path)
@@ -719,6 +788,10 @@ def openclip(image_file_path: str, settings: dict, debug:bool=False) -> [str, bo
     """ get image description from OpenCLIP """
     err:bool = False
 
+    # skip wmf because it cannot be openend
+    if image_file_path.endswith(".wmf"):
+        return "A windows metafile", err
+    
     # read image
     im = Image.open(image_file_path).convert("RGB")
 
@@ -791,7 +864,7 @@ def llava(image_file_path: str, extension:str, settings: dict, debug:bool=False)
         alt_text = response_data.get('content', '').strip()
 
         # remove returns
-        alt_text = remove_newline(alt_text)        
+        alt_text = replace_newline_with_space(alt_text)        
 
     return alt_text, err
 
@@ -1041,7 +1114,8 @@ def process_shapes_from_file(shape: BaseShape, group_shape_list: list[BaseShape]
 
     elif shape.shape_type in [MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.LINE, MSO_SHAPE_TYPE.FREEFORM, \
                               MSO_SHAPE_TYPE.CHART, MSO_SHAPE_TYPE.IGX_GRAPHIC, MSO_SHAPE_TYPE.CANVAS, \
-                              MSO_SHAPE_TYPE.MEDIA, MSO_SHAPE_TYPE.WEB_VIDEO]:
+                              MSO_SHAPE_TYPE.MEDIA, MSO_SHAPE_TYPE.WEB_VIDEO, MSO_SHAPE_TYPE.DIAGRAM, \
+                              MSO_SHAPE_TYPE.OLE_CONTROL_OBJECT, MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT]:
 
         # get decorative
         decorative_pptx:bool = is_decorative(shape)

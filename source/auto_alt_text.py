@@ -6,6 +6,8 @@ from typing import List
 import os
 import sys
 import io
+import subprocess
+import time
 import argparse
 import base64
 import platform
@@ -715,46 +717,46 @@ def kosmos2(image_file_path: str, settings: dict, debug:bool=False) -> [str, boo
     """ get image description from Kosmos-2 """
     err:bool = False
 
-    # skip wmf because it cannot be openend
-    if image_file_path.endswith(".wmf"):
-        return "A windows metafile", err
+    # check if readonly
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, settings)
+    if readonly:
+        return msg, False
+    
+    with Image.open(image_file_path) as img:
 
-    # read image
-    im = Image.open(image_file_path)
+        # resize image
+        img = resize(img, settings)
 
-    # resize image
-    im = resize(im, settings)
+        # prompt
+        prompt:str = settings["prompt"]
+        #prompt = "<grounding>An image of"
+        #prompt = "<grounding> Describe this image in detail:"
 
-    # prompt
-    prompt:str = settings["prompt"]
-    #prompt = "<grounding>An image of"
-    #prompt = "<grounding> Describe this image in detail:"
+        processor:str = settings["kosmos2-processor"]
+        model:str = settings["kosmos2-model"]
 
-    processor:str = settings["kosmos2-processor"]
-    model:str = settings["kosmos2-model"]
-
-    print("Generating alt text...")
-    inputs = processor(text=prompt, images=im, return_tensors="pt")
-    if settings["cuda_available"]:
-        generated_ids = model.generate(
-            pixel_values=inputs["pixel_values"].cuda(),
-            input_ids=inputs["input_ids"].cuda(),
-            attention_mask=inputs["attention_mask"].cuda(),
-            image_embeds=None,
-            image_embeds_position_mask=inputs["image_embeds_position_mask"].cuda(),
-            use_cache=True,
-            max_new_tokens=256,
-        )
-    else:
-        generated_ids = model.generate(
-            pixel_values=inputs["pixel_values"],
-            input_ids=inputs["input_ids"],
-            attention_mask=inputs["attention_mask"],
-            image_embeds=None,
-            image_embeds_position_mask=inputs["image_embeds_position_mask"],
-            use_cache=True,
-            max_new_tokens=256,
-        )
+        print("Generating alt text...")
+        inputs = processor(text=prompt, images=img, return_tensors="pt")
+        if settings["cuda_available"]:
+            generated_ids = model.generate(
+                pixel_values=inputs["pixel_values"].cuda(),
+                input_ids=inputs["input_ids"].cuda(),
+                attention_mask=inputs["attention_mask"].cuda(),
+                image_embeds=None,
+                image_embeds_position_mask=inputs["image_embeds_position_mask"].cuda(),
+                use_cache=True,
+                max_new_tokens=256,
+            )
+        else:
+            generated_ids = model.generate(
+                pixel_values=inputs["pixel_values"],
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],
+                image_embeds=None,
+                image_embeds_position_mask=inputs["image_embeds_position_mask"],
+                use_cache=True,
+                max_new_tokens=256,
+            )
 
     generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
@@ -773,6 +775,66 @@ def kosmos2(image_file_path: str, settings: dict, debug:bool=False) -> [str, boo
 
     return alt_text, err
 
+def check_readonly_formats(image_file_path: str, settings: dict) -> [str, str, bool]:
+    """
+    Check if image format is WMF, WME, or PSD which can only be read by the pillow library.
+    Function converts WMF (vector format) to JPEG using LibreOffice.
+    
+    Other read only formats not yet tested. Conversion only tested on macOS.
+    """
+    readonly:bool = False
+    msg:str = ""
+    new_image_file_path = image_file_path
+
+    with Image.open(image_file_path) as img:
+
+        if img.format in ['WMF', 'WME']:
+            msg = "A windows media format file."
+            readonly = True
+        elif img.format in ['PSD']:
+            msg = "An Adobe Photoshop file."
+            readonly = True
+
+        if readonly and img.format in ['WMF'] and platform.system() != "Windows":
+                err:bool = False
+
+                # convert images to PNG
+                dirname:str = os.path.dirname(image_file_path)
+                basename:str = os.path.basename(image_file_path).split(".")[0]
+                new_image_file_path = os.path.join(os.path.dirname(image_file_path), f"{basename}.jpg")
+
+                print("Converting WMF to JPEG...")
+                try:
+                    # convert WMF to PNG using headless libreoffice
+                    # only tested on macOS so far
+                    cmd:list[str] = ["soffice", "--headless", "--convert-to", "jpg", image_file_path, "--outdir", dirname]
+                    r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False)
+
+                except subprocess.CalledProcessError as e:
+                    msg = f"soffice CalledProcessError: {str(e)}"
+                    err = True
+                except subprocess.TimeoutExpired as e:
+                    msg = f"soffice TimeoutExpired: {str(e)}"
+                    err = True
+                except OSError as e:
+                    msg = f"soffice OSError, file does not exist?: {str(e)}"
+                    err = True
+                except Exception as e:
+                    msg = f"soffice exception: {str(e)}"
+                    err = True
+                else:
+                    readonly = False
+                
+                if err:
+                    readonly = True
+                    new_image_file_path = image_file_path
+                    print(r.stderr)
+
+    if readonly:
+        print(f"Warning, unable to open '{img.format}' file. Replace image in powerpoint with PNG, TIFF, or JPEG version.")
+
+    return new_image_file_path, readonly, msg
+
 def resize(image:Image.Image, settings:dict) -> Image.Image:
     """ resize image """
     px:int = settings["img_size"]
@@ -787,25 +849,26 @@ def resize(image:Image.Image, settings:dict) -> Image.Image:
 def openclip(image_file_path: str, settings: dict, debug:bool=False) -> [str, bool]:
     """ get image description from OpenCLIP """
     err:bool = False
-
-    # skip wmf because it cannot be openend
-    if image_file_path.endswith(".wmf"):
-        return "A windows metafile", err
     
-    # read image
-    im = Image.open(image_file_path).convert("RGB")
+    # check if readonly
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, settings)
+    if readonly:
+        return msg, False
+        
+    with Image.open(image_file_path) as img:
+        img = img.convert("RGB")
+    
+        # resize image
+        img = resize(img, settings)
 
-    # resize image
-    im = resize(im, settings)
+        transform = settings["openclip-transform"]
+        img = transform(img).unsqueeze(0)
 
-    transform = settings["openclip-transform"]
-    im = transform(im).unsqueeze(0)
-
-    # use OpenCLIP model to create label
-    model = settings["openclip-model"]
-    print("Generating alt text...")
-    with torch.no_grad(), torch.cuda.amp.autocast():
-        generated = model.generate(im)
+        # use OpenCLIP model to create label
+        model = settings["openclip-model"]
+        print("Generating alt text...")
+        with torch.no_grad(), torch.cuda.amp.autocast():
+            generated = model.generate(img)
 
     # get picture description and remove trailing spaces
     alt_text = open_clip.decode(generated[0]).split("<end_of_text>")[0].replace("<start_of_text>", "").strip()
@@ -820,17 +883,23 @@ def llava(image_file_path: str, extension:str, settings: dict, debug:bool=False)
     err:bool = False
     alt_text:str = ""
 
-    # convert images to JPEG
-    basename:str = os.path.basename(image_file_path).split(".")[0]
-    jpeg_image_file_path = os.path.join(os.path.dirname(image_file_path), f"{basename}.jpg")
-
+    # check if readonly
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, settings)
+    if readonly:
+        return msg, False
+    
     with Image.open(image_file_path) as img:
-        # Convert the image to RGB mode in case it's not
-        img = img.convert('RGB')
-        # Save the image as JPEG
-        img.save(jpeg_image_file_path, 'JPEG')
+        if img.format != 'JPEG':
+            # convert images to JPEG
+            basename:str = os.path.basename(image_file_path).split(".")[0]
+            jpeg_image_file_path = os.path.join(os.path.dirname(image_file_path), f"{basename}.jpg")
 
-        image_file_path = jpeg_image_file_path
+            # Convert the image to RGB mode in case it's not
+            img = img.convert('RGB')
+            # Save the image as JPEG
+            img.save(jpeg_image_file_path, 'JPEG')
+
+            image_file_path = jpeg_image_file_path
 
     # get image and convert to base64_str
     img_base64_str = img_file_to_base64(image_file_path, settings, debug)
@@ -870,16 +939,16 @@ def llava(image_file_path: str, extension:str, settings: dict, debug:bool=False)
 
 def img_file_to_base64(image_file_path:str , settings: dict, debug:bool=False) -> str:
     """ load image, resize, and convert to base64_str """
-    original_img = Image.open(image_file_path)
-    im = original_img.convert("RGB")
+    with Image.open(image_file_path) as original_img:
+        im = original_img.convert("RGB")
 
-    # resize image
-    im = resize(im, settings)
+        # resize image
+        im = resize(im, settings)
 
-    # check
-    buffer = io.BytesIO()
-    im.save(buffer, format=original_img.format.upper())
-    buffer.seek(0)
+        # check
+        buffer = io.BytesIO()
+        im.save(buffer, format=original_img.format.upper())
+        buffer.seek(0)
 
     # Encode the image bytes to Base64
     base64_bytes = base64.b64encode(buffer.getvalue())
@@ -894,6 +963,11 @@ def gpt4v(image_file_path: str, extension:str, settings: dict, debug:bool=False)
     err:bool = False
     alt_text:str = ""
 
+    # check if readonly
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, settings)
+    if readonly:
+        return msg, False
+
     api_key = os.environ.get("OPENAI_API_KEY")
     if api_key is None or api_key == "":
         print("OPENAI_API_KEY not found in environment")
@@ -903,12 +977,13 @@ def gpt4v(image_file_path: str, extension:str, settings: dict, debug:bool=False)
         jpeg_image_file_path = os.path.join(os.path.dirname(image_file_path), f"{basename}.jpg")
 
         with Image.open(image_file_path) as img:
-            # Convert the image to RGB mode in case it's not
-            img = img.convert('RGB')
-            # Save the image as JPEG
-            img.save(jpeg_image_file_path, 'JPEG')
+            if img.format != 'JPEG':
+                # Convert the image to RGB mode in case it's not
+                img = img.convert('RGB')
+                # Save the image as JPEG
+                img.save(jpeg_image_file_path, 'JPEG')
 
-            image_file_path = jpeg_image_file_path
+                image_file_path = jpeg_image_file_path
 
         # get image and convert to base64_str
         img_base64_str = img_file_to_base64(image_file_path, settings)

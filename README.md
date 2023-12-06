@@ -28,6 +28,12 @@ pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
 
+To generate `Alt Text` for WMF images in Powerpoint, the script needs [LibreOffice](https://www.libreoffice.org) to convert WMF to a bitmap format. On macOS use [brew](https://brew.sh) to install LibreOffice.
+
+```sh
+brew install libreoffice
+```
+
 For cuda support on Linux, follow instructions on the [PyTorch website](https://pytorch.org/get-started/locally/) to install torch with cuda support.
 
 ### Windows
@@ -166,4 +172,6 @@ python source/auto_alt_text.py --help
 
 ## Known issues
 
-- LLaVA not working when resizing image, use `--resize 0` to disable image resizing.
+- LLaVA inference is not working properly when image is resized, use `--resize 0` to disable image resizing.
+
+- Processing WMF (Windows Media Files) requires LibreOffice. This has been test at the moment only on macOS.

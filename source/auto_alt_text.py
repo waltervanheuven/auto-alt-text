@@ -1284,8 +1284,8 @@ def export_slides_to_images(pptx_path:str, debug:bool=False):
         os.makedirs(img_folder)
 
     path_to_folder_to_save = os.path.join(dirname, pptx_name, "slides_png")
-    if not os.path.isdir(img_folder):
-        os.makedirs(img_folder)
+    if not os.path.isdir(path_to_folder_to_save):
+        os.makedirs(path_to_folder_to_save)
 
     if platform.system() == "Windows":
         try:

@@ -1300,7 +1300,7 @@ def export_slides_to_images(pptx_path:str, debug:bool=False):
             abs_path_to_folder_to_save = os.path.abspath(path_to_folder_to_save)
 
             for i, slide in enumerate(presentation.Slides):
-                slide.Export(f"{abs_path_to_folder_to_save}/slide{i+1}.jpg", "JPG")
+                slide.Export(f"{abs_path_to_folder_to_save}/slide{i+1}.png", "PNG")
 
             presentation.Close()
             powerpoint.Quit()

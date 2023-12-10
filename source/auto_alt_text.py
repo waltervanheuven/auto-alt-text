@@ -818,7 +818,7 @@ def check_readonly_formats(image_file_path: str, settings: dict) -> [str, str, b
                             print("Warning, LibreOffice not installed.")
                     elif platform.system() == "Windows":
                         # convert using magick
-                        cmd:list[str] = ["magick", "convert", image_file_path, "--outdir", dirname]
+                        cmd:list[str] = ["magick", "convert", image_file_path, new_image_file_path]
                         path_to_cmd = shutil.which(cmd[0])
                         if path_to_cmd is not None:
                             r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False)

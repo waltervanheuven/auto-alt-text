@@ -7,7 +7,7 @@ import os
 import sys
 import io
 import subprocess
-import time
+import shutil
 import argparse
 import base64
 import platform
@@ -627,11 +627,11 @@ def process_shape_and_generate_alt_text(shape:BaseShape, pptx:dict, settings:dic
     image_stream = None
     extension:str = ""
     if hasattr(shape, "image"):
-        # get image, works with only with PNG, JPG?
+        # get image, works with only with PNG, JPEG?
         image_stream = shape.image.blob
         extension = shape.image.ext
     else:
-        # get image for other formats, e.g. TIF
+        # get image for other formats, e.g. TIFF
         # <Element {http://schemas.openxmlformats.org/presentationml/2006/main}pic at 0x15f2d6b20>
         try:
             slide_part = shape.part
@@ -641,7 +641,7 @@ def process_shape_and_generate_alt_text(shape:BaseShape, pptx:dict, settings:dic
             extension = image_part.partname.ext
         except AttributeError:
             slide_cnt:int = pptx["slide_cnt"] + 1
-            print(f"Slide: {slide_cnt}, Picture '{shape.name}', unable to access image")
+            print(f"Error, slide: {slide_cnt}, pict: '{shape.name}', unable to access image")
             #err = True
 
     if not err and image_stream is not None:
@@ -795,20 +795,35 @@ def check_readonly_formats(image_file_path: str, settings: dict) -> [str, str, b
             msg = "An Adobe Photoshop file."
             readonly = True
 
-        if readonly and img.format in ['WMF'] and platform.system() != "Windows":
+        if readonly and img.format in ['WMF']:
                 err:bool = False
 
                 # convert images to PNG
                 dirname:str = os.path.dirname(image_file_path)
                 basename:str = os.path.basename(image_file_path).split(".")[0]
-                new_image_file_path = os.path.join(os.path.dirname(image_file_path), f"{basename}.jpg")
+                new_image_file_path = os.path.join(os.path.dirname(image_file_path), f"{basename}.png")
 
-                print("Converting WMF to JPEG...")
+                print(f"Converting {img.format} to PNG...")
                 try:
                     # convert WMF to PNG using headless libreoffice
                     # only tested on macOS so far
-                    cmd:list[str] = ["soffice", "--headless", "--convert-to", "jpg", image_file_path, "--outdir", dirname]
-                    r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False)
+                    if platform.system() != "Windows":
+                        # convert using LibreOffice (headless)
+                        
+                        cmd:list[str] = ["soffice", "--headless", "--convert-to", "png", image_file_path, "--outdir", dirname]
+                        path_to_cmd = shutil.which(cmd[0])
+                        if path_to_cmd is not None:
+                            r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False)
+                        else:
+                            print("Warning, LibreOffice not installed.")
+                    elif platform.system() == "Windows":
+                        # convert using magick
+                        cmd:list[str] = ["magick", "convert", image_file_path, "--outdir", dirname]
+                        path_to_cmd = shutil.which(cmd[0])
+                        if path_to_cmd is not None:
+                            r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False)
+                        else:
+                            print("Warning, ImageMagick not installed.")
 
                 except subprocess.CalledProcessError as e:
                     msg = f"soffice CalledProcessError: {str(e)}"
@@ -839,6 +854,7 @@ def resize(image:Image.Image, settings:dict) -> Image.Image:
     """ resize image """
     px:int = settings["img_size"]
     if px != 0:
+        # only resize if img_size != 0
         if image.width > px or image.height > px:
             new_size = (min(px, image.width), min(px, image.height))
             print(f"Resize image from ({image.width}, {image.height}) to {new_size}")
@@ -1256,30 +1272,91 @@ def remove_presenter_notes(file_path:str, debug:bool=False):
 
     return err
 
-def export_slides_to_images(file_path:str, debug:bool=False):
+def export_slides_to_images(pptx_path:str, debug:bool=False):
     """ export slides to PNG, Windows ONLY and requires that Powerpoint is installed """
+
+    dirname:str = os.path.dirname(pptx_path)
+    pptx_name:str = pathlib.Path(pptx_path).stem
+
+    # create folder to store images
+    img_folder = os.path.join(dirname, pptx_name)
+    if not os.path.isdir(img_folder):
+        os.makedirs(img_folder)
+
+    path_to_folder_to_save = os.path.join(dirname, pptx_name, "slides_png")
+    if not os.path.isdir(img_folder):
+        os.makedirs(img_folder)
+
     if platform.system() == "Windows":
-        import comtypes.client
+        try:
+            import comtypes.client
 
-        dirname:str = os.path.dirname(file_path)
-        pptx_name:str = pathlib.Path(file_path).stem
-        path_to_folder_to_save = os.path.join(dirname, pptx_name, "png")
+            powerpoint = comtypes.client.CreateObject("Powerpoint.Application")
+            powerpoint.Visible = 1
 
-        powerpoint = comtypes.client.CreateObject("Powerpoint.Application")
-        powerpoint.Visible = 1
-        presentation = powerpoint.Presentations.Open(file_path)
-    
-        if not os.path.exists(path_to_folder_to_save):
-            os.makedirs(path_to_folder_to_save)
+            abs_file_path = os.path.abspath(pptx_path)
+            presentation = powerpoint.Presentations.Open(abs_file_path)
 
-        for i, slide in enumerate(presentation.Slides):
-            slide.Export(f"{path_to_folder_to_save}/slide{i+1}.jpg", "JPG")
+            abs_path_to_folder_to_save = os.path.abspath(path_to_folder_to_save)
 
-        presentation.Close()
-        powerpoint.Quit()
-        
+            for i, slide in enumerate(presentation.Slides):
+                slide.Export(f"{abs_path_to_folder_to_save}/slide{i+1}.jpg", "JPG")
+
+            presentation.Close()
+            powerpoint.Quit()
+            print(f"Slides saved as PNG images in folder: '{abs_path_to_folder_to_save}'")
+        except Exception as e:
+            print(f"Unable to export slides: {str(e)}")        
+    elif platform.system() == "Darwin":
+        # export PPTX first to PDF
+        print("Exporting to PDF...")
+
+        cmd:list[str] = ["soffice", "--headless", "--convert-to", "pdf", pptx_path, "--outdir", path_to_folder_to_save]
+        path_to_cmd = shutil.which(cmd[0])
+        if path_to_cmd is not None:
+            r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False)
+        else:
+            print("Warning, LibreOffice not installed.")
+
+        # save each page as a separate file
+        print("Extracting pages from PDF...")
+        pdf_file:str = os.path.join(path_to_folder_to_save, f"{pptx_name}.pdf")
+        out_file_name:str = os.path.join(path_to_folder_to_save, f"{pptx_name}.pdf")
+
+        cmd = ["qpdf", "--split-pages", pdf_file, out_file_name]
+        path_to_cmd = shutil.which(cmd[0])
+        if path_to_cmd is not None:
+            r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False)
+        else:
+            print("Warning, qpdf not installed.")
+
+        # export from PDF to PNG
+        print("Converting each page to PNG...")
+        the_files = os.listdir(path_to_folder_to_save)
+        for f in the_files:
+            if not f.startswith(".") and f.startswith(f"{pptx_name}-"):
+                in_file = os.path.join(path_to_folder_to_save, f)
+                cmd = ["sips", "-s", "dpiWidth", "300", "-s", "dpiHeight", "300", "-s", "format", "png", in_file, "--out", path_to_folder_to_save]
+                path_to_cmd = shutil.which(cmd[0])
+                
+                if path_to_cmd is not None:
+                    r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False) #capture_output = True)
+                else:
+                    print("Unable to find 'sips'")
+
+        # remove PDFs
+        for f in the_files:
+            if not f.startswith(".") and f.startswith(f"{pptx_name}-"):
+                in_file = os.path.join(path_to_folder_to_save, f)
+                os.remove(in_file)
+
+        # remove exported PDF file 
+        #os.remove(pdf_file)
+
+        print(f"Slides saved as PNG images in folder: '{path_to_folder_to_save}'")
     else:
-        print("Unable to export images to PNG on macOS/Linux.")
+        print("Unable to convert PPTX to images.")
+    
    
     return False
 
@@ -1305,7 +1382,7 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--save", action='store_true', default=False, help="flag to save powerpoint file with updated alt texts")
     parser.add_argument("--replace", type=str, default="", help="replace alt texts in pptx with those specified in file")
     parser.add_argument("--remove_presenter_notes", action='store_true', default="", help="remove all presenter notes")
-    parser.add_argument("--export_img", action='store_true', default="", help="export pptx to png images")
+    parser.add_argument("--export_img", action='store_true', default="", help="export pptx slides to png images")
     #
     parser.add_argument("--debug", action='store_true', default=False, help="flag for debugging")
 

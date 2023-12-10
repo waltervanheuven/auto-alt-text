@@ -1364,7 +1364,7 @@ def main(argv: List[str]) -> int:
     """ main """
     err:bool = False
 
-    parser = argparse.ArgumentParser(description='Add alt-text automatically to images in Powerpoint')
+    parser = argparse.ArgumentParser(description='Add alt-text automatically to images and objects in Powerpoint')
     parser.add_argument("file", type=str, help="Powerpoint file")
     parser.add_argument("--report", action='store_true', default=False, help="flag to generate alt text report")
     parser.add_argument("--model", type=str, default="", help="kosmos-2, openclip, llava, or gpt-4v")
@@ -1382,7 +1382,7 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--save", action='store_true', default=False, help="flag to save powerpoint file with updated alt texts")
     parser.add_argument("--replace", type=str, default="", help="replace alt texts in pptx with those specified in file")
     parser.add_argument("--remove_presenter_notes", action='store_true', default="", help="remove all presenter notes")
-    parser.add_argument("--export_img", action='store_true', default="", help="export pptx slides to png images")
+    parser.add_argument("--export_slides", action='store_true', default="", help="export pptx slides to png images")
     #
     parser.add_argument("--debug", action='store_true', default=False, help="flag for debugging")
 
@@ -1438,7 +1438,7 @@ def main(argv: List[str]) -> int:
             err = replace_alt_texts(powerpoint_file_name, args.replace, args.debug)
         elif args.remove_presenter_notes:
             err = remove_presenter_notes(powerpoint_file_name, args.debug)
-        elif args.export_img:
+        elif args.export_slides:
             err = export_slides_to_images(powerpoint_file_name, args.debug)
         else:
             err = process_images_from_pptx(powerpoint_file_name, settings, args.debug)

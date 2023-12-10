@@ -180,11 +180,11 @@ python source/auto_alt_text.py --help
 ```
 
 ```txt
-usage: auto_alt_text.py [-h] [--report] [--model MODEL] [--server SERVER] [--port PORT] [--show_openclip_models] [--openclip_model OPENCLIP_MODEL] [--openclip_pretrained OPENCLIP_PRETRAINED] [--resize RESIZE] [--prompt PROMPT]
-                        [--save] [--replace REPLACE] [--remove_presenter_notes] [--export_img] [--debug]
+usage: auto_alt_text.py [-h] [--report] [--model MODEL] [--server SERVER] [--port PORT] [--show_openclip_models] [--openclip_model OPENCLIP_MODEL] [--openclip_pretrained OPENCLIP_PRETRAINED] [--resize RESIZE]
+                        [--prompt PROMPT] [--save] [--replace REPLACE] [--remove_presenter_notes] [--export_slides] [--debug]
                         file
 
-Add alt-text automatically to images in Powerpoint
+Add alt-text automatically to images and objects in Powerpoint
 
 positional arguments:
   file                  Powerpoint file
@@ -207,7 +207,7 @@ options:
   --replace REPLACE     replace alt texts in pptx with those specified in file
   --remove_presenter_notes
                         remove all presenter notes
-  --export_img          export pptx slides to png images
+  --export_slides       export pptx slides to png images
   --debug               flag for debugging
 ```
 

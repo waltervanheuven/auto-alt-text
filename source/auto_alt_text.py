@@ -235,7 +235,7 @@ def init_model(settings: dict) -> bool:
             print("Using CUDA.")
 
             tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-            model = AutoModelForCausalLM.from_pretrained(model_name, load_in_4bit=True, device_map="auto", trust_remote_code=True).eval()
+            model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cuda", trust_remote_code=True).eval()
             model.generation_config = GenerationConfig.from_pretrained(model_name, trust_remote_code=True)
         else:
             print("Model requires a GPU with CUDA support.")

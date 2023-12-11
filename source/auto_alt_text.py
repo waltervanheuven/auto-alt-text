@@ -229,7 +229,7 @@ def init_model(settings: dict) -> bool:
     elif model_str == "qwen-vl":
 
         if settings["cuda_available"]:
-            model_name = "Qwen/Qwen-VL-Chat-Int4"
+            model_name = "Qwen/Qwen-VL-Chat"
             print(f"Qwen-VL model: '{model_name}'")
             print(f"prompt: '{prompt}'")
             print("Using CUDA.")

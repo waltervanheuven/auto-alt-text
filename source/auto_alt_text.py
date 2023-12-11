@@ -18,7 +18,8 @@ import requests
 from PIL import Image
 import open_clip
 import torch
-from transformers import AutoProcessor, AutoModelForVision2Seq
+from transformers import AutoProcessor, AutoModelForVision2Seq, AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer, BitsAndBytesConfig
+from transformers.generation import GenerationConfig
 from pptx.oxml.ns import _nsmap
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
@@ -122,10 +123,11 @@ def process_images_from_pptx(file_path: str, settings: dict, debug: bool = False
     # download and/or set up model
     if not report:
         err = init_model(settings)
-        print()
         if err:
             print("Unable to init model.")
             return err
+        else:
+            print()
 
     pptx:dict = {
         'group_shape_list': None,   # the group shape
@@ -199,10 +201,13 @@ def init_model(settings: dict) -> bool:
     err:bool = False
     model_str:str = settings["model"]
     prompt:str = settings["prompt"]
+    model_name:str = ""
+    model = None
+    tokenizer = None
 
     if model_str == "kosmos-2":
         # Kosmos-2 model
-        model_name:str = "microsoft/kosmos-2-patch14-224"
+        model_name = "microsoft/kosmos-2-patch14-224"
         print(f"Kosmos-2 model: '{model_name}'")
         print(f"prompt: '{prompt}'")
         m = AutoModelForVision2Seq.from_pretrained(model_name)
@@ -221,6 +226,87 @@ def init_model(settings: dict) -> bool:
         )
         settings["openclip-model"] = model
         settings["openclip-transform"] = transform
+    elif model_str == "qwen-vl":
+
+        if settings["cuda_available"]:
+            model_name = "Qwen/Qwen-VL-Chat-Int4"
+            print(f"Qwen-VL model: '{model_name}'")
+            print(f"prompt: '{prompt}'")
+            print("Using CUDA.")
+
+            tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+            model = AutoModelForCausalLM.from_pretrained(model_name, load_in_4bit=True, device_map="auto", trust_remote_code=True).eval()
+            model.generation_config = GenerationConfig.from_pretrained(model_name, trust_remote_code=True)
+        else:
+            print("Model requires a GPU with CUDA support.")
+            err = True
+            #model_name = "Qwen/Qwen-VL-Chat"
+            #print(f"Qwen-VL model: '{model_name}'")
+            #print(f"prompt: '{prompt}'")
+
+            # if settings['mps_available']:
+            #     os.environ["ACCELERATE_USE_MPS_DEVICE"] = "True"
+
+            # print("Not yet working on non-cuda systems")
+            # # not yet working on non-cuda systems
+            # # quantization config object
+            # # set isable_exllama=True
+            # if settings['mps_available']:
+            #     model = AutoModelForCausalLM.from_pretrained(model_name, load_in_4bit=True, device_map="auto", trust_remote_code=True).eval()
+            #     model.generation_config = GenerationConfig.from_pretrained(model_name, trust_remote_code=True)
+            # else:
+            
+            # note that this model requires 33.66 GB
+            #
+            # tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+            # model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cpu", trust_remote_code=True).eval()
+            # model.generation_config = GenerationConfig.from_pretrained(model_name, trust_remote_code=True)
+
+        settings["qwen-vl-model"] = model
+        settings["qwen-vl-tokenizer"] = tokenizer
+    elif model_str == "cogvlm":
+        model_name = "THUDM/cogvlm-chat-hf"
+        print(f"CogVLM model: '{model_name}'")
+        print(f"prompt: '{prompt}'")
+
+        if settings["cuda_available"]:
+            print("Using CUDA.")
+
+        tokenizer = LlamaTokenizer.from_pretrained('lmsys/vicuna-7b-v1.5')
+        if settings["cuda_available"]:
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                load_in_4bit=True,
+                #torch_dtype=torch.bfloat16,
+                low_cpu_mem_usage=True,
+                trust_remote_code=True
+            ).to('cuda').eval()
+        else:
+            print("Model requires a GPU with CUDA support.")
+            err = True
+            # if settings['mps_available']:
+            #     os.environ["ACCELERATE_USE_MPS_DEVICE"] = "True"
+            #     print("Activating mps device for accelerate.")
+
+            #     print("Not yet working on mps devices")
+            #     model = AutoModelForCausalLM.from_pretrained(
+            #         model_name,
+            #         load_in_4bit=True,
+            #         #torch_dtype=torch.bfloat16,
+            #         low_cpu_mem_usage=True,
+            #         trust_remote_code=True,
+            #     ).to('mps').eval()
+            # else:
+            #     print("Not yet working on cpu")
+            #     model = AutoModelForCausalLM.from_pretrained(
+            #         model_name,
+            #         load_in_4bit=True,
+            #         trust_remote_code=True,
+            #     ).to('cpu').eval()
+
+        settings["cogvlm-model"] = model
+        settings["cogvlm-tokenizer"] = tokenizer
+
     elif model_str == "llava":
         # LLaVA
         server_url = settings["llava_url"]
@@ -704,6 +790,10 @@ def generate_description(image_file_path: str, extension:str, settings: dict, de
         alt_text, err = kosmos2(image_file_path, settings, debug)
     elif model_str == "openclip":
         alt_text, err = openclip(image_file_path, settings, debug)
+    elif model_str == "qwen-vl":
+        alt_text, err = qwen_vl(image_file_path, settings, debug)
+    elif model_str == "cogvlm":
+        alt_text, err = cogvlm(image_file_path, settings, debug)
     elif model_str == "llava":
         alt_text, err = llava(image_file_path, extension, settings, debug)
     elif model_str == "gpt-4v":
@@ -871,9 +961,7 @@ def openclip(image_file_path: str, settings: dict, debug:bool=False) -> [str, bo
     if readonly:
         return msg, False
         
-    with Image.open(image_file_path) as img:
-        img = img.convert("RGB")
-    
+    with Image.open(image_file_path).convert('RGB') as img:
         # resize image
         img = resize(img, settings)
 
@@ -891,6 +979,91 @@ def openclip(image_file_path: str, settings: dict, debug:bool=False) -> [str, bo
 
     # remove space before '.' and capitalize
     alt_text = alt_text.replace(' .', '.').capitalize()
+
+    return alt_text, err
+
+def qwen_vl(image_file_path: str, settings: dict, debug:bool=False) -> [str, bool]:
+    """ get image description from Qwen-VL """
+    err:bool = False
+
+    # check if readonly
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, settings)
+    if readonly:
+        return msg, False
+    
+    prompt:str = settings["prompt"]
+    model:str = settings["qwen-vl-model"]
+    tokenizer:str = settings["qwen-vl-tokenizer"]
+
+    # with Image.open(image_file_path).convert('RGB') as img:
+    #     # resize image
+    #     img = resize(img, settings)
+    #     # prompt
+    #     prompt:str = settings["prompt"]        
+    #     model:str = settings["cogvlm-model"]
+    #     tokenizer:str = settings["cogvlm-tokenizer"]
+    #     query = tokenizer.from_list_format([
+    #         {'image': img},
+    #         {'text': prompt},
+    #     ])
+    #     alt_text, history = model.chat(tokenizer, query=query, history=None)
+ 
+    alt_text, history = model.chat(tokenizer, query=f'<img>{image_file_path}</img>{prompt}', history=None)
+
+    return alt_text, err
+
+def cogvlm(image_file_path: str, settings: dict, debug:bool=False) -> [str, bool]:
+    """ get image description from CogVLM """
+    err:bool = False
+
+    # check if readonly
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, settings)
+    if readonly:
+        return msg, False
+    
+    with Image.open(image_file_path).convert('RGB') as img:
+
+        # resize image
+        img = resize(img, settings)
+
+        # prompt
+        prompt:str = settings["prompt"]        
+        model:str = settings["cogvlm-model"]
+        tokenizer:str = settings["cogvlm-tokenizer"]
+
+        print("Generating alt text...")
+        inputs = model.build_conversation_input_ids(tokenizer, query=prompt, history=[], images=[img])
+
+    if settings["cuda_available"]:
+        inputs = {
+            'input_ids': inputs['input_ids'].unsqueeze(0).to('cuda'),
+            'token_type_ids': inputs['token_type_ids'].unsqueeze(0).to('cuda'),
+            'attention_mask': inputs['attention_mask'].unsqueeze(0).to('cuda'),
+            'images': [[inputs['images'][0].to('cuda').to(torch.bfloat16)]],
+        }
+    # elif settings["mps_available"]:
+    #     inputs = {
+    #         'input_ids': inputs['input_ids'].unsqueeze(0).to('mps'),
+    #         'token_type_ids': inputs['token_type_ids'].unsqueeze(0).to('mps'),
+    #         'attention_mask': inputs['attention_mask'].unsqueeze(0).to('mps'),
+    #         'images': [[inputs['images'][0].to('mps').to(torch.bfloat16)]],
+    #     }
+    else:
+        inputs = {
+            'input_ids': inputs['input_ids'].unsqueeze(0).to('cpu'),
+            'token_type_ids': inputs['token_type_ids'].unsqueeze(0).to('cpu'),
+            'attention_mask': inputs['attention_mask'].unsqueeze(0).to('cpu'),
+            'images': [[inputs['images'][0].to('cpu').to(torch.bfloat16)]],
+        }
+
+    gen_kwargs = {"max_length": 2048, "do_sample": False}
+
+    alt_text:str = ""
+    with torch.no_grad():
+        outputs = model.generate(**inputs, **gen_kwargs)
+        outputs = outputs[:, inputs['input_ids'].shape[1]:]
+
+        alt_text = tokenizer.decode(outputs[0])
 
     return alt_text, err
 
@@ -1401,14 +1574,20 @@ def main(argv: List[str]) -> int:
     # set default prompt
     if model_str == "gpt-4v":
         if args.prompt == "":
-            prompt = "Describe the image in a single sentence"
+            prompt = "Describe the image"
     elif model_str == "llava":
         if args.prompt == "":
-            prompt = "Describe in detail using a single sentence. Do not start the description with 'The image'"
+            prompt = "Describe the image. Do not start the description with 'The image'"
     elif model_str == "kosmos-2":
         if args.prompt == "":
             #prompt = "<grounding>An image of"
             prompt = "<grounding>Describe this image in detail:"
+    elif model_str == "qwen-vl":
+        if args.prompt == "":
+            prompt = "Describe the image"
+    elif model_str == "cogvlm":
+        if args.prompt == "":
+            prompt = "Describe the image"
 
     # Read PowerPoint file and list images
     powerpoint_file_name = args.file
@@ -1416,7 +1595,6 @@ def main(argv: List[str]) -> int:
         print(f"Error: File {powerpoint_file_name} not found.")
         err = True
     else:
-        cuda_available:bool = torch.cuda.is_available()
 
         settings:dict = {
             "report": args.report,
@@ -1427,9 +1605,14 @@ def main(argv: List[str]) -> int:
             "openclip_pretrained": args.openclip_pretrained,
             "openclip-model": None,
             "openclip-transform": None,
+            "qwen-vl-model": None,
+            "qwen-vl-tokenizer": None,
+            "cogvlm-model": None,
+            "cogvlm-tokenizer": None,
             "llava_url": f"{args.server}:{args.port}",
             "gpt4v_model": "gpt-4-vision-preview",
-            "cuda_available": cuda_available,
+            "cuda_available": torch.cuda.is_available(),
+            "mps_available": torch.backends.mps.is_available(),
             "prompt": prompt,
             "img_size": int(args.resize)
         }

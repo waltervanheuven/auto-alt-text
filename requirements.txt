@@ -6,18 +6,3 @@ transformers
 torch
 openai
 comtypes; platform_system == "Windows"
-#
-# requirements below are for the Qwen-VL and Cog-VL models
-#
-matplotlib
-tiktoken
-transformers_stream_generator
-optimum
-scipy
-# for auto_gptq on MacOS, run:
-# BUILD_CUDA_EXT=0 pip install auto_gptq
-auto_gptq
-einops
-xformers
-accelerate
-bitsandbytes

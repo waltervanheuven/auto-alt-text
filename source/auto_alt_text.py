@@ -20,8 +20,9 @@ import open_clip
 import torch
 from transformers import AutoProcessor, AutoModelForVision2Seq, AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer, BitsAndBytesConfig
 from transformers.generation import GenerationConfig
-from pptx.oxml.ns import _nsmap
 from pptx import Presentation
+from pptx.util import Cm
+from pptx.oxml.ns import _nsmap
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.shapes.base import BaseShape
 
@@ -243,22 +244,22 @@ def init_model(settings: dict) -> bool:
             #model_name = "Qwen/Qwen-VL-Chat"
             #print(f"Qwen-VL model: '{model_name}'")
             #print(f"prompt: '{prompt}'")
-
-            # if settings['mps_available']:
+            #
+            #if settings['mps_available']:
             #     os.environ["ACCELERATE_USE_MPS_DEVICE"] = "True"
-
+            #
             # print("Not yet working on non-cuda systems")
             # # not yet working on non-cuda systems
             # # quantization config object
             # # set isable_exllama=True
-            # if settings['mps_available']:
-            #     model = AutoModelForCausalLM.from_pretrained(model_name, load_in_4bit=True, device_map="auto", trust_remote_code=True).eval()
-            #     model.generation_config = GenerationConfig.from_pretrained(model_name, trust_remote_code=True)
+            #if settings['mps_available']:
+            #   tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+            #   model = AutoModelForCausalLM.from_pretrained(model_name, load_in_4bit=True, device_map="mps", trust_remote_code=True).eval()
+            #   model.generation_config = GenerationConfig.from_pretrained(model_name, trust_remote_code=True)
             # else:
-            
+            #
             # note that this model requires 33.66 GB
             #
-            # tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
             # model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cpu", trust_remote_code=True).eval()
             # model.generation_config = GenerationConfig.from_pretrained(model_name, trust_remote_code=True)
 
@@ -1445,9 +1446,10 @@ def remove_presenter_notes(file_path:str, debug:bool=False):
 
     return err
 
-def export_slides_to_images(pptx_path:str, debug:bool=False):
+def export_slides_to_images(pptx_path:str, debug:bool=False) -> None:
     """ export slides to PNG, Windows ONLY and requires that Powerpoint is installed """
 
+    err:bool = False
     dirname:str = os.path.dirname(pptx_path)
     pptx_name:str = pathlib.Path(pptx_path).stem
 
@@ -1479,7 +1481,9 @@ def export_slides_to_images(pptx_path:str, debug:bool=False):
             powerpoint.Quit()
             print(f"Slides saved as PNG images in folder: '{abs_path_to_folder_to_save}'")
         except Exception as e:
-            print(f"Unable to export slides: {str(e)}")        
+            print(f"Unable to export slides: {str(e)}")
+            err = True
+            
     elif platform.system() == "Darwin":
         # export PPTX first to PDF
         print("Exporting to PDF...")
@@ -1528,10 +1532,64 @@ def export_slides_to_images(pptx_path:str, debug:bool=False):
 
         print(f"Slides saved as PNG images in folder: '{path_to_folder_to_save}'")
     else:
+        err = True
         print("Unable to convert PPTX to images.")
     
+    if not err:
+        # generate pptx from slide images
+        images_to_pptx(path_to_folder_to_save, f"{pptx_name}_slides.pptx", debug)
    
     return False
+
+def images_to_pptx(images_path:str, output_file:str="presentation.pptx", debug:bool=False) -> None:
+    """
+    Create a PowerPoint presentation with an image on each slide
+    """
+    print("Generate pptx from images...")
+
+    # Create a presentation object
+    prs = Presentation()
+
+    # Define slide width and height (in centimeters)
+    slide_width_cm = prs.slide_width.cm
+    slide_height_cm = prs.slide_height.cm
+
+    # select only PNG files
+    the_files = os.listdir(images_path)
+    the_files = [f for f in the_files if f.endswith(".png")]
+    if len(the_files) == 0:
+        print("No images found!")
+        return
+
+    for f in the_files:
+        file_path = os.path.join(images_path, f)
+
+        # Open the image to get its size
+        with Image.open(file_path) as img:
+            width_px, height_px = img.size
+            dpi = img.info.get('dpi', (96, 96))  # Defaulting to 96 DPI if not provided
+
+        # Calculate the image size in centimeters
+        width_cm = width_px / dpi[0] * 2.54
+        height_cm = height_px / dpi[1] * 2.54
+
+        # Calculate the scaling factor
+        scale_factor = min(slide_width_cm / width_cm, slide_height_cm / height_cm)
+
+        # Add a slide with a blank layout
+        slide_layout = prs.slide_layouts[5]  # 5 is the index for a blank slide
+        slide = prs.slides.add_slide(slide_layout)
+
+        # Add and resize the image to the slide
+        img = slide.shapes.add_picture(file_path, Cm(0), Cm(0),
+                                       width=Cm(width_cm * scale_factor),
+                                       height=Cm(height_cm * scale_factor))
+
+    # Save the presentation
+    out = os.path.join(images_path, output_file)
+    prs.save(out)
+
+    print(f"Saved pptx to '{out}'.")
 
 def main(argv: List[str]) -> int:
     """ main """

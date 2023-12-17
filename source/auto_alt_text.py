@@ -18,7 +18,8 @@ import requests
 from PIL import Image
 import open_clip
 import torch
-from transformers import AutoProcessor, AutoModelForVision2Seq, AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer, BitsAndBytesConfig
+from transformers import AutoProcessor, AutoModelForVision2Seq, AutoModelForCausalLM, AutoTokenizer
+from transformers import LlamaTokenizer, LlavaForConditionalGeneration
 from transformers.generation import GenerationConfig
 from pptx import Presentation
 from pptx.util import Cm
@@ -85,7 +86,7 @@ def is_decorative(shape) -> bool:
 def process_images_from_pptx(file_path: str, settings: dict, debug: bool = False) -> bool:
     """
     Loop through images in the slides of a Powerpint file and set image description based 
-    on image description from Kosmos-2, OpenCLIP, or LLaVA
+    on image description from Kosmos-2, OpenCLIP, LLaVA, etc.
     """
     err:bool = False
 
@@ -133,6 +134,7 @@ def process_images_from_pptx(file_path: str, settings: dict, debug: bool = False
     pptx:dict = {
         'group_shape_list': None,   # the group shape
         'image_list': None,    # list of images in the group shape
+        'object_list': None,   # list of objects (except text boxes)
         'text_list': None,     # list of the text of text boxes in a shape group
         'base_left': 0,        # base_left of group shape
         'base_top': 0,         # base_top of group shape
@@ -141,6 +143,7 @@ def process_images_from_pptx(file_path: str, settings: dict, debug: bool = False
         'fout': None,         # fout of text file
         'img_folder': img_folder,
         'pptx_nslides': pptx_nslides,
+        'current_slide': None,
         'slide_cnt': 0,
         'slide_image_cnt': 0
     }
@@ -151,14 +154,16 @@ def process_images_from_pptx(file_path: str, settings: dict, debug: bool = False
         pptx["fout"] = fout
 
         # write header
-        fout.write(f"Model\tFile\tSlide\tObjectName\tObjectType\tPartOfGroup\tAlt_Text\tLenAltText\tDecorative\tPictFilePath\n")
+        fout.write("Model\tFile\tSlide\tObjectName\tObjectType\tPartOfGroup\tAlt_Text\tLenAltText\tDecorative\tPictFilePath\n")
 
         # total number of images in the pptx
         image_cnt:int = 0
 
         # Loop through slides
+        slide_cnt:int = 0
         for slide_cnt, slide in enumerate(prs.slides):
             pptx["slide_cnt"] = slide_cnt
+            pptx["current_slide"] = slide
             print(f"---- Slide: {slide_cnt + 1} ----")
 
             # loop through shapes
@@ -168,13 +173,19 @@ def process_images_from_pptx(file_path: str, settings: dict, debug: bool = False
                 if err:
                     break
 
-                pptx["group_shape_list"] = None
-                pptx["image_list"] = None
-                pptx["text_list"] = None
+            if settings["add_to_notes"] and (pptx["slide_image_cnt"] > 0 or (pptx["object_list"] is not None)):
+                # only add presenter note if there is at least one image or object on the slide
+                err = add_presenter_note(file_path, pptx, settings)
 
             # if err break out slide loop
             if err:
                 break
+
+            # reset info
+            pptx["group_shape_list"] = None
+            pptx["image_list"] = None
+            pptx["object_list"] = None
+            pptx["text_list"] = None
 
             image_cnt += pptx["slide_image_cnt"]
 
@@ -239,7 +250,7 @@ def init_model(settings: dict) -> bool:
             model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cuda", trust_remote_code=True).eval()
             model.generation_config = GenerationConfig.from_pretrained(model_name, trust_remote_code=True)
         else:
-            print("Model requires a GPU with CUDA support.")
+            print("Qwen-VL requires a GPU with CUDA support.")
             err = True
             #model_name = "Qwen/Qwen-VL-Chat"
             #print(f"Qwen-VL model: '{model_name}'")
@@ -283,7 +294,7 @@ def init_model(settings: dict) -> bool:
                 trust_remote_code=True
             ).to('cuda').eval()
         else:
-            print("Model requires a GPU with CUDA support.")
+            print("CogVLM requires a GPU with CUDA support.")
             err = True
             # if settings['mps_available']:
             #     os.environ["ACCELERATE_USE_MPS_DEVICE"] = "True"
@@ -309,15 +320,46 @@ def init_model(settings: dict) -> bool:
         settings["cogvlm-tokenizer"] = tokenizer
 
     elif model_str == "llava":
-        # LLaVA
-        server_url = settings["llava_url"]
-        if check_server_is_running(server_url):
-            server_url = f"{server_url}/completion"
-            print(f"LLaVA server: '{server_url}'")
+        if not settings["use_llava_server"]:
+            # LLaVA
+            #model_name = "llava-hf/llava-1.5-7b-hf"
+            model_name = settings["llava_model_name"]
+            print(f"LLaVA model: '{model_name}'")
             print(f"prompt: '{prompt}'")
+
+            if settings["cuda_available"]:
+                model = LlavaForConditionalGeneration.from_pretrained(
+                    model_name,
+                    torch_dtype=torch.float16,
+                    device_map="auto",
+                    low_cpu_mem_usage=True,
+                    load_in_4bit=True,
+                ).to(0)
+                settings["lava-model"] = model
+            elif settings["mps_available"]:
+                # not yet supported
+                print("LLaVA requires a GPU with CUDA support.")
+                err = True
+                # model = LlavaForConditionalGeneration.from_pretrained(
+                #     model_name,
+                #     torch_dtype=torch.float16,
+                #     device_map="mps",
+                #     low_cpu_mem_usage=True,
+                #     #load_in_4bit=True,
+                # ).to('mps')
+                settings["lava-model"] = model
+            else:
+                print("LLaVA requires a GPU with CUDA support.")
+                err = True
         else:
-            print(f"Unable to access server at '{server_url}'.")
-            err = True
+            server_url = settings["llava_url"]
+            if check_server_is_running(server_url):
+                server_url = f"{server_url}/completion"
+                print(f"LLaVA server: '{server_url}'")
+                print(f"prompt: '{prompt}'")
+            else:
+                print(f"Unable to access server at '{server_url}'.")
+                err = True
     elif model_str == "gpt-4v":
         print("GPT-4V")
         print(f"model: {settings['gpt4v_model']}")
@@ -337,7 +379,7 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
 
     if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
         # keep a list of images as part of the group
-        if pptx["group_shape_list"] == None:
+        if pptx["group_shape_list"] is None:
             pptx["group_shape_list"] = [shape]
         else:
             group_shape_list = pptx["group_shape_list"]
@@ -348,6 +390,8 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
             pptx["image_list"] = []
         if pptx["text_list"] is None:
             pptx["text_list"] = []
+        if pptx["object_list"] is None:
+            pptx["object_list"] = []
 
         # process shapes
         for embedded_shape in shape.shapes:
@@ -393,10 +437,10 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
                     alt_text = f"{alt_text}. "
 
                 # combine alt text to generate the alt text for the group
-                
+
                 if len(image_list) > 1:
                     alt_text = f"{alt_text}There are {len(image_list)} images:"
-                for shape, _, _, txt in image_list:
+                for _, _, _, txt in image_list:
                     # remove newlines
                     txt = replace_newline_with_space(txt)
                     if len(alt_text) == 0:
@@ -408,7 +452,7 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
                 set_alt_text(group_shape, alt_text)
             else:
                 alt_text = get_alt_text(group_shape)
-                
+
                 # remove returns
                 alt_text = replace_newline_with_space(alt_text)
 
@@ -436,7 +480,7 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
             group_shape_list = pptx["group_shape_list"]
             pptx["group_shape_list"] = group_shape_list[:-1]
 
-    elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+    elif shape.shape_type in [MSO_SHAPE_TYPE.PICTURE, MSO_SHAPE_TYPE.LINKED_PICTURE]:
         # picture
         image_file_path:str = ""
         decorative:bool = is_decorative(shape)
@@ -444,7 +488,6 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
 
         # only generate alt text when generate options is True and decorative is False
         if not decorative:
-            #err, image_file_path = set_alt_text(shape, image_list, base_left, base_top, img_folder, slide_cnt, nr_slides, slide_image_cnt, settings, debug)
             err, image_file_path = process_shape_and_generate_alt_text(shape, pptx, settings, debug)
 
         if not err:
@@ -474,9 +517,17 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
     elif shape.shape_type in [MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.LINE, MSO_SHAPE_TYPE.FREEFORM, \
                               MSO_SHAPE_TYPE.CHART, MSO_SHAPE_TYPE.IGX_GRAPHIC, MSO_SHAPE_TYPE.CANVAS, \
                               MSO_SHAPE_TYPE.MEDIA, MSO_SHAPE_TYPE.WEB_VIDEO, MSO_SHAPE_TYPE.DIAGRAM, \
-                              MSO_SHAPE_TYPE.OLE_CONTROL_OBJECT, MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT]:
+                              MSO_SHAPE_TYPE.OLE_CONTROL_OBJECT, MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT, \
+                              MSO_SHAPE_TYPE.WEB_VIDEO, MSO_SHAPE_TYPE.LINKED_OLE_OBJECT, \
+                              MSO_SHAPE_TYPE.CALLOUT]:
 
         process_object(shape, pptx, settings, debug)
+
+        object_list = pptx["object_list"]
+        if object_list is None:
+            object_list = []
+            object_list.append(shape)
+            pptx["object_list"] = object_list
 
     elif shape.shape_type == MSO_SHAPE_TYPE.TEXT_BOX:
         # TEXT_BOX is part of a group
@@ -499,37 +550,45 @@ def replace_newline_with_space(txt: str) -> str:
     return s.replace("\t", " ")
 
 def get_current_group_shape(pptx:dict) -> BaseShape:
+    """ return group shape """
     group_shape_list:list[BaseShape] = pptx["group_shape_list"]
     if group_shape_list is not None and len(group_shape_list) > 0:
         return group_shape_list[-1]
-    else:
-        return None
+
+    return None
 
 def shape_type2str(type) -> str:
+    """ return name of shape as string """
+    s:str = ""
+
     if type == MSO_SHAPE_TYPE.AUTO_SHAPE:
-        return "Auto shape"
+        s =  "Auto shape"
     elif type == MSO_SHAPE_TYPE.LINE:
-        return "Line"
+        s =  "Line"
     elif type == MSO_SHAPE_TYPE.IGX_GRAPHIC:
-        return "IgxGraphic"
+        s =  "IgxGraphic"
     elif type == MSO_SHAPE_TYPE.CHART:
-        return "Chart"
+        s = "Chart"
     elif type == MSO_SHAPE_TYPE.FREEFORM:
-        return "FreeForm"
+        s = "FreeForm"
     elif type == MSO_SHAPE_TYPE.TEXT_BOX:
-        return "TextBox"
+        s = "TextBox"
     elif type == MSO_SHAPE_TYPE.CANVAS:
-        return "Canvas"
+        s = "Canvas"
     elif type == MSO_SHAPE_TYPE.MEDIA:
-        return "Media"
+        s = "Media"
     elif type == MSO_SHAPE_TYPE.WEB_VIDEO:
-        return "WebVideo"
+        s = "WebVideo"
     elif type == MSO_SHAPE_TYPE.DIAGRAM:
-        return "Diagram"
+        s = "Diagram"
     elif type == MSO_SHAPE_TYPE.OLE_CONTROL_OBJECT:
-        return "Control object"
+        s = "Control object"
     elif type == MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT:
-        return "Embedded object"
+        s = "Embedded object"
+    elif type == MSO_SHAPE_TYPE.WEB_VIDEO:
+        s = "Web video"
+
+    return s
 
 def process_object(shape:BaseShape, pptx:dict, settings:dict, debug:bool = False) -> None:
     """ process """
@@ -552,18 +611,18 @@ def process_object(shape:BaseShape, pptx:dict, settings:dict, debug:bool = False
         # Quick fix for alt text of shapes
         if shape.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:
             if len(shape.name) > 0:
-                alt_text = f"A {cleanup_name_object(shape.name)} auto shape"
+                alt_text = f"{cleanup_name_object(shape.name)}"
             else:
-                alt_text = "An auto shape"
+                alt_text = ""
         elif shape.shape_type == MSO_SHAPE_TYPE.CHART:
             if len(shape.name) > 0:
                 if cleanup_name_object(shape.name.lower()) != "chart":
                     # avoid duplication chart
-                    alt_text = f"A {cleanup_name_object(shape.name)} chart"
+                    alt_text = f"{cleanup_name_object(shape.name)}"
                 else:
-                    alt_text = f"A {cleanup_name_object(shape.name)}"
+                    alt_text = f"{cleanup_name_object(shape.name)}"
             else:
-                alt_text = "A chart"
+                alt_text = ""
 
             # add title of chart to alt_text
             the_chart = shape.chart
@@ -572,46 +631,49 @@ def process_object(shape:BaseShape, pptx:dict, settings:dict, debug:bool = False
 
         elif shape.shape_type == MSO_SHAPE_TYPE.LINE:
             if len(shape.name) > 0:
-                alt_text = f"A {cleanup_name_object(shape.name)} line"
+                alt_text = f"{cleanup_name_object(shape.name)}"
             else:
-                alt_text = "A line"
+                alt_text = ""
         elif shape.shape_type == MSO_SHAPE_TYPE.CANVAS:
             if len(shape.name) > 0:
-                alt_text = f"A {cleanup_name_object(shape.name)} canvas"
+                alt_text = f"{cleanup_name_object(shape.name)}"
             else:
-                alt_text = "A canvas"
+                alt_text = ""
         elif shape.shape_type == MSO_SHAPE_TYPE.FREEFORM:
             if len(shape.name) > 0:
-                alt_text = f"A {cleanup_name_object(shape.name)} freeform shape"
+                alt_text = f"{cleanup_name_object(shape.name)}"
             else:
-                alt_text = "A freeform shape"
+                alt_text = ""
         elif shape.shape_type == MSO_SHAPE_TYPE.MEDIA:
             if len(shape.name) > 0:
-                alt_text = f"A media object entitled '{cleanup_name_object(shape.name)}'"
+                alt_text = f"{cleanup_name_object(shape.name)}"
             else:
-                alt_text = "A media object"
+                alt_text = ""
         elif shape.shape_type == MSO_SHAPE_TYPE.WEB_VIDEO:
             if len(shape.name) > 0:
-                alt_text = f"A web video entitled '{cleanup_name_object(shape.name)}'"
+                alt_text = f"{cleanup_name_object(shape.name)}"
             else:
-                alt_text = "A web video"
+                alt_text = ""
         elif shape.shape_type == MSO_SHAPE_TYPE.DIAGRAM:
             if len(shape.name) > 0:
-                alt_text = f"A {shape.name} diagram"
+                alt_text = f"{shape.name}"
             else:
-                alt_text = "A diagram"
+                alt_text = ""
         elif shape.shape_type == MSO_SHAPE_TYPE.OLE_CONTROL_OBJECT:
             if len(shape.name) > 0:
-                alt_text = f"A {shape.name} control object"
+                alt_text = f"{shape.name}"
             else:
-                alt_text = "A control object"
+                alt_text = ""
         elif shape.shape_type == MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT:
             if len(shape.name) > 0:
-                alt_text = f"A {shape.name} embedded object"
+                alt_text = f"{shape.name}"
             else:
-                alt_text = "An embedded object"
+                alt_text = ""
         else:
-            alt_text = f"{shape.name.lower()}"
+            if len(shape.name) > 0:
+                alt_text = f"{shape.name.lower()}"
+            else:
+                alt_text = ""
 
         # indicate the text inside the shape
         if shape.has_text_frame:
@@ -669,17 +731,20 @@ def cleanup_name_object(txt:str) -> str:
     check if alt shape name contains a number at the end 
     e.g. "oval 1", "oval 2" and remove the number
     """
+    s:str = ""
+
     elements:list[str] = txt.lower().split()
     if len(elements) == 1:
-        return elements[0]
+        s = elements[0]
     else:
         last_word = elements[-1]
         try:
             number = int(last_word)
-        except ValueError as e:
-            return txt
-        else:
-            return ' '.join(elements[:-1])
+            s = ' '.join(elements[:-1])
+        except ValueError:
+            s = txt
+
+    return s
 
 def combine_images_in_group(images, group_shape):
     """ 
@@ -776,35 +841,41 @@ def process_shape_and_generate_alt_text(shape:BaseShape, pptx:dict, settings:dic
 
             if len(alt_text) > 0:
                 set_alt_text(shape, alt_text)
-            #else:
-            #    print("Alt text is empty")
 
     return err, image_file_path
 
-def generate_description(image_file_path: str, extension:str, settings: dict, debug:bool=False) -> [str, bool]:
+def generate_description(image_file_path: str, extension:str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
     """ generate image text description using MLLM/VL model """
     err:bool = False
     alt_text:str = ""
     model_str:str = settings["model"]
 
+    if for_notes:
+        print("Generating presenter notes...")
+    else:
+        print("Generating alt text...")
+
     if model_str == "kosmos-2":
-        alt_text, err = kosmos2(image_file_path, settings, debug)
+        alt_text, err = kosmos2(image_file_path, settings, for_notes, debug)
     elif model_str == "openclip":
-        alt_text, err = openclip(image_file_path, settings, debug)
+        alt_text, err = openclip(image_file_path, settings, for_notes, debug)
     elif model_str == "qwen-vl":
-        alt_text, err = qwen_vl(image_file_path, settings, debug)
+        alt_text, err = qwen_vl(image_file_path, settings, for_notes, debug)
     elif model_str == "cogvlm":
-        alt_text, err = cogvlm(image_file_path, settings, debug)
+        alt_text, err = cogvlm(image_file_path, settings, for_notes, debug)
     elif model_str == "llava":
-        alt_text, err = llava(image_file_path, extension, settings, debug)
+        if settings["use_llava_server"]:
+            alt_text, err = llava_server(image_file_path, extension, settings, for_notes, debug)
+        else:
+            alt_text, err = llava(image_file_path, extension, settings, for_notes, debug)
     elif model_str == "gpt-4v":
-        alt_text, err = gpt4v(image_file_path, extension, settings, debug)
+        alt_text, err = gpt4v(image_file_path, extension, settings, for_notes, debug)
     else:
         print(f"Unknown model: {model_str}")
 
     return alt_text, err
 
-def kosmos2(image_file_path: str, settings: dict, debug:bool=False) -> [str, bool]:
+def kosmos2(image_file_path: str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
     """ get image description from Kosmos-2 """
     err:bool = False
 
@@ -812,21 +883,21 @@ def kosmos2(image_file_path: str, settings: dict, debug:bool=False) -> [str, boo
     image_file_path, readonly, msg = check_readonly_formats(image_file_path, settings)
     if readonly:
         return msg, False
-    
+
     with Image.open(image_file_path) as img:
 
         # resize image
         img = resize(img, settings)
 
         # prompt
-        prompt:str = settings["prompt"]
-        #prompt = "<grounding>An image of"
-        #prompt = "<grounding> Describe this image in detail:"
+        if for_notes:
+            prompt = settings["prompt_notes"]
+        else:
+            prompt = settings["prompt"]
 
         processor:str = settings["kosmos2-processor"]
         model:str = settings["kosmos2-model"]
 
-        print("Generating alt text...")
         inputs = processor(text=prompt, images=img, return_tensors="pt")
         if settings["cuda_available"]:
             generated_ids = model.generate(
@@ -868,7 +939,8 @@ def kosmos2(image_file_path: str, settings: dict, debug:bool=False) -> [str, boo
 
 def check_readonly_formats(image_file_path: str, settings: dict) -> [str, str, bool]:
     """
-    Check if image format is WMF, WME, or PSD which can only be read by the pillow library.
+    Check if image format is WMF, WME, or PSD which can not be converted using the pillow library.
+
     Function converts WMF (vector format) to JPEG using LibreOffice.
     
     Other read only formats not yet tested. Conversion only tested on macOS.
@@ -887,54 +959,51 @@ def check_readonly_formats(image_file_path: str, settings: dict) -> [str, str, b
             readonly = True
 
         if readonly and img.format in ['WMF']:
-                err:bool = False
+            err:bool = False
 
-                # convert images to PNG
-                dirname:str = os.path.dirname(image_file_path)
-                basename:str = os.path.basename(image_file_path).split(".")[0]
-                new_image_file_path = os.path.join(os.path.dirname(image_file_path), f"{basename}.png")
+            # convert images to PNG
+            dirname:str = os.path.dirname(image_file_path)
+            basename:str = os.path.basename(image_file_path).split(".")[0]
+            new_image_file_path = os.path.join(os.path.dirname(image_file_path), f"{basename}.png")
 
-                print(f"Converting {img.format} to PNG...")
-                try:
-                    # convert WMF to PNG using headless libreoffice
-                    # only tested on macOS so far
-                    if platform.system() != "Windows":
-                        # convert using LibreOffice (headless)
-                        
-                        cmd:list[str] = ["soffice", "--headless", "--convert-to", "png", image_file_path, "--outdir", dirname]
-                        path_to_cmd = shutil.which(cmd[0])
-                        if path_to_cmd is not None:
-                            r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False)
-                        else:
-                            print("Warning, LibreOffice not installed.")
-                    elif platform.system() == "Windows":
-                        # convert using magick
-                        cmd:list[str] = ["magick", "convert", image_file_path, new_image_file_path]
-                        path_to_cmd = shutil.which(cmd[0])
-                        if path_to_cmd is not None:
-                            r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False)
-                        else:
-                            print("Warning, ImageMagick not installed.")
+            print(f"Converting {img.format} to PNG...")
+            try:
+                # convert WMF to PNG using headless libreoffice
+                if platform.system() != "Windows":
+                    # convert using LibreOffice (headless)
+                    cmd:list[str] = ["soffice", "--headless", "--convert-to", "png", image_file_path, "--outdir", dirname]
+                    path_to_cmd = shutil.which(cmd[0])
+                    if path_to_cmd is not None:
+                        r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
+                    else:
+                        print("Warning, LibreOffice not installed.")
+                elif platform.system() == "Windows":
+                    # convert using magick
+                    cmd:list[str] = ["magick", "convert", image_file_path, new_image_file_path]
+                    path_to_cmd = shutil.which(cmd[0])
+                    if path_to_cmd is not None:
+                        r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
+                    else:
+                        print("Warning, ImageMagick not installed.")
+            except subprocess.CalledProcessError as e:
+                msg = f"soffice CalledProcessError: {str(e)}"
+                err = True
+            except subprocess.TimeoutExpired as e:
+                msg = f"soffice TimeoutExpired: {str(e)}"
+                err = True
+            except OSError as e:
+                msg = f"soffice OSError, file does not exist?: {str(e)}"
+                err = True
+            except Exception as e:
+                msg = f"soffice exception: {str(e)}"
+                err = True
+            else:
+                readonly = False
 
-                except subprocess.CalledProcessError as e:
-                    msg = f"soffice CalledProcessError: {str(e)}"
-                    err = True
-                except subprocess.TimeoutExpired as e:
-                    msg = f"soffice TimeoutExpired: {str(e)}"
-                    err = True
-                except OSError as e:
-                    msg = f"soffice OSError, file does not exist?: {str(e)}"
-                    err = True
-                except Exception as e:
-                    msg = f"soffice exception: {str(e)}"
-                    err = True
-                else:
-                    readonly = False
-                
-                if err:
-                    readonly = True
-                    new_image_file_path = image_file_path
-                    print(r.stderr)
+            if err:
+                readonly = True
+                new_image_file_path = image_file_path
+                print(r.stderr)
 
     if readonly:
         print(f"Warning, unable to open '{img.format}' file. Replace image in powerpoint with PNG, TIFF, or JPEG version.")
@@ -953,15 +1022,15 @@ def resize(image:Image.Image, settings:dict) -> Image.Image:
 
     return image
 
-def openclip(image_file_path: str, settings: dict, debug:bool=False) -> [str, bool]:
+def openclip(image_file_path: str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
     """ get image description from OpenCLIP """
     err:bool = False
-    
+
     # check if readonly
     image_file_path, readonly, msg = check_readonly_formats(image_file_path, settings)
     if readonly:
         return msg, False
-        
+
     with Image.open(image_file_path).convert('RGB') as img:
         # resize image
         img = resize(img, settings)
@@ -971,7 +1040,7 @@ def openclip(image_file_path: str, settings: dict, debug:bool=False) -> [str, bo
 
         # use OpenCLIP model to create label
         model = settings["openclip-model"]
-        print("Generating alt text...")
+
         with torch.no_grad(), torch.cuda.amp.autocast():
             generated = model.generate(img)
 
@@ -983,7 +1052,7 @@ def openclip(image_file_path: str, settings: dict, debug:bool=False) -> [str, bo
 
     return alt_text, err
 
-def qwen_vl(image_file_path: str, settings: dict, debug:bool=False) -> [str, bool]:
+def qwen_vl(image_file_path: str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
     """ get image description from Qwen-VL """
     err:bool = False
 
@@ -991,8 +1060,13 @@ def qwen_vl(image_file_path: str, settings: dict, debug:bool=False) -> [str, boo
     image_file_path, readonly, msg = check_readonly_formats(image_file_path, settings)
     if readonly:
         return msg, False
-    
-    prompt:str = settings["prompt"]
+
+    # prompt
+    if for_notes:
+        prompt:str = settings["prompt_notes"]
+    else:
+        prompt:str = settings["prompt"]
+
     model:str = settings["qwen-vl-model"]
     tokenizer:str = settings["qwen-vl-tokenizer"]
 
@@ -1000,7 +1074,7 @@ def qwen_vl(image_file_path: str, settings: dict, debug:bool=False) -> [str, boo
     #     # resize image
     #     img = resize(img, settings)
     #     # prompt
-    #     prompt:str = settings["prompt"]        
+    #     prompt:str = settings["prompt"]
     #     model:str = settings["cogvlm-model"]
     #     tokenizer:str = settings["cogvlm-tokenizer"]
     #     query = tokenizer.from_list_format([
@@ -1008,12 +1082,12 @@ def qwen_vl(image_file_path: str, settings: dict, debug:bool=False) -> [str, boo
     #         {'text': prompt},
     #     ])
     #     alt_text, history = model.chat(tokenizer, query=query, history=None)
- 
+
     alt_text, history = model.chat(tokenizer, query=f'<img>{image_file_path}</img>{prompt}', history=None)
 
     return alt_text, err
 
-def cogvlm(image_file_path: str, settings: dict, debug:bool=False) -> [str, bool]:
+def cogvlm(image_file_path: str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
     """ get image description from CogVLM """
     err:bool = False
 
@@ -1021,18 +1095,21 @@ def cogvlm(image_file_path: str, settings: dict, debug:bool=False) -> [str, bool
     image_file_path, readonly, msg = check_readonly_formats(image_file_path, settings)
     if readonly:
         return msg, False
-    
+
     with Image.open(image_file_path).convert('RGB') as img:
 
         # resize image
         img = resize(img, settings)
 
         # prompt
-        prompt:str = settings["prompt"]        
+        if for_notes:
+            prompt:str = settings["prompt_notes"]
+        else:
+            prompt:str = settings["prompt"]
+
         model:str = settings["cogvlm-model"]
         tokenizer:str = settings["cogvlm-tokenizer"]
 
-        print("Generating alt text...")
         inputs = model.build_conversation_input_ids(tokenizer, query=prompt, history=[], images=[img])
 
     if settings["cuda_available"]:
@@ -1068,8 +1145,8 @@ def cogvlm(image_file_path: str, settings: dict, debug:bool=False) -> [str, bool
 
     return alt_text, err
 
-def llava(image_file_path: str, extension:str, settings: dict, debug:bool=False) -> [str, bool]:
-    """ get image description from LLaVA """
+def llava_server(image_file_path: str, extension:str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
+    """ use LLaVA through llava.cpp server """
     err:bool = False
     alt_text:str = ""
 
@@ -1077,7 +1154,7 @@ def llava(image_file_path: str, extension:str, settings: dict, debug:bool=False)
     image_file_path, readonly, msg = check_readonly_formats(image_file_path, settings)
     if readonly:
         return msg, False
-    
+
     with Image.open(image_file_path) as img:
         if img.format != 'JPEG':
             # convert images to JPEG
@@ -1096,7 +1173,13 @@ def llava(image_file_path: str, extension:str, settings: dict, debug:bool=False)
 
     # Use LLaVa to get image descriptions
     server_url:str = f"{settings['llava_url']}/completion"
-    prompt:str = settings["prompt"]
+
+    # prompt
+    if for_notes:
+        prompt:str = settings["prompt_notes"]
+    else:
+        prompt:str = settings["prompt"]
+
     header:str = {"Content-Type": "application/json"}
     data = {
         "image_data": [{"data": img_base64_str, "id": 1}],
@@ -1104,9 +1187,9 @@ def llava(image_file_path: str, extension:str, settings: dict, debug:bool=False)
         "n_predict": 512,
         "temperature": 0.1
     }
-    print("Generating alt text...")
+
     try:
-        response = requests.post(server_url, headers=header, json=data, timeout=10)
+        response = requests.post(server_url, headers=header, json=data, timeout=30)
         response_data = response.json()
 
         if debug:
@@ -1123,7 +1206,7 @@ def llava(image_file_path: str, extension:str, settings: dict, debug:bool=False)
         alt_text = response_data.get('content', '').strip()
 
         # remove returns
-        alt_text = replace_newline_with_space(alt_text)        
+        alt_text = replace_newline_with_space(alt_text)
 
     return alt_text, err
 
@@ -1148,7 +1231,33 @@ def img_file_to_base64(image_file_path:str , settings: dict, debug:bool=False) -
 
     return base64_str
 
-def gpt4v(image_file_path: str, extension:str, settings: dict, debug:bool=False) -> [str, bool]:
+def llava(image_file_path: str, extension:str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
+    """ run LLaVA model through huggingface transformers """
+    err:bool = False
+
+    model_name = settings["llava_model_name"]
+
+    # prompt
+    if for_notes:
+        prompt:str = settings["prompt_notes"]
+    else:
+        prompt:str = settings["prompt"]
+
+    model = settings["lava-model"]
+    processor = AutoProcessor.from_pretrained(model_name)
+
+    with Image.open(image_file_path) as original_img:
+        im = original_img.convert("RGB")
+        inputs = processor(prompt, im, return_tensors='pt').to("mps")    #to(0, torch.float16)
+
+    #alt_text = model.generate(**inputs, max_new_tokens=200, do_sample=False)
+
+    inputs = processor(prompt, return_tensors='pt').to("mps")
+    alt_text = model.generate(**inputs, max_new_tokens=200, do_sample=False)
+
+    return alt_text, err
+
+def gpt4v(image_file_path: str, extension:str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
     """ get image description from GPT-4V """
     err:bool = False
     alt_text:str = ""
@@ -1175,8 +1284,16 @@ def gpt4v(image_file_path: str, extension:str, settings: dict, debug:bool=False)
 
                 image_file_path = jpeg_image_file_path
 
+        print(f"Image file size: {os.path.getsize(image_file_path)}")
+
         # get image and convert to base64_str
         img_base64_str = img_file_to_base64(image_file_path, settings)
+
+        # prompt
+        if for_notes:
+            prompt:str = settings["prompt_notes"]
+        else:
+            prompt:str = settings["prompt"]
 
         headers = {
             "Content-Type": "application/json",
@@ -1190,7 +1307,7 @@ def gpt4v(image_file_path: str, extension:str, settings: dict, debug:bool=False)
                 "content": [
                 {
                     "type": "text",
-                    "text": settings["prompt"]
+                    "text": prompt
                 },
                 {
                     "type": "image_url",
@@ -1203,9 +1320,9 @@ def gpt4v(image_file_path: str, extension:str, settings: dict, debug:bool=False)
             ],
             "max_tokens": 300
         }
-        print("Generating alt text...")
+
         try:
-            response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+            response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=20)
 
             json_out = response.json()
 
@@ -1215,6 +1332,9 @@ def gpt4v(image_file_path: str, extension:str, settings: dict, debug:bool=False)
                 err = True
             else:
                 alt_text = json_out["choices"][0]["message"]["content"]
+        except TimeoutError:
+            print(f"TimeoutError")
+            err = True
         except Exception as e:
             print(f"Exception: '{str(e)}'")
             if debug:
@@ -1380,7 +1500,9 @@ def process_shapes_from_file(shape: BaseShape, group_shape_list: list[BaseShape]
     elif shape.shape_type in [MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.LINE, MSO_SHAPE_TYPE.FREEFORM, \
                               MSO_SHAPE_TYPE.CHART, MSO_SHAPE_TYPE.IGX_GRAPHIC, MSO_SHAPE_TYPE.CANVAS, \
                               MSO_SHAPE_TYPE.MEDIA, MSO_SHAPE_TYPE.WEB_VIDEO, MSO_SHAPE_TYPE.DIAGRAM, \
-                              MSO_SHAPE_TYPE.OLE_CONTROL_OBJECT, MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT]:
+                              MSO_SHAPE_TYPE.OLE_CONTROL_OBJECT, MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT, \
+                              MSO_SHAPE_TYPE.WEB_VIDEO, MSO_SHAPE_TYPE.LINKED_OLE_OBJECT, \
+                              MSO_SHAPE_TYPE.CALLOUT]:
 
         # get decorative
         decorative_pptx:bool = is_decorative(shape)
@@ -1422,36 +1544,92 @@ def process_shapes_from_file(shape: BaseShape, group_shape_list: list[BaseShape]
 
     return group_shape_list, object_cnt, slide_object_cnt
 
-def remove_presenter_notes(file_path:str, debug:bool=False):
+def add_presenter_note(pptx_path:str, pptx:dict, settings:dict) -> bool:
+    """ add presenter note to each slide """
+    err:bool = False
+
+    pptx_name:str = pathlib.Path(pptx_path).stem
+    #pptx_extension:str = pathlib.Path(pptx_path).suffix
+    dirname:str = os.path.dirname(pptx_path)
+
+    slide_dir:str = os.path.join(dirname, pptx_name, "slides_png")
+    current_slide:int = pptx["slide_cnt"]
+    t = num2str(pptx['pptx_nslides'], current_slide + 1)
+    file_name:str = f"{pptx_name}-{t}.png"
+    slide_image_file_path = os.path.join(slide_dir, file_name)
+
+    if os.path.isfile(slide_image_file_path):
+        alt_text, err = generate_description(slide_image_file_path, ".png", settings, for_notes=True)
+        slide = pptx["current_slide"]
+        slide.notes_slide.notes_text_frame.text = alt_text
+        print(f"Slide: {current_slide + 1}\t{alt_text}")
+    else:
+        print(f"Unable to access image file: {slide_image_file_path}")
+        err = True
+
+    return err
+
+def remove_presenter_notes(pptx_path:str) -> bool:
     """ remove all presenter notes """
     err:bool = False
 
     # get name, extension, folder from Powerpoint file
-    pptx_name:str = pathlib.Path(file_path).stem
-    pptx_extension:str = pathlib.Path(file_path).suffix
-    dirname:str = os.path.dirname(file_path)
+    pptx_name:str = pathlib.Path(pptx_path).stem
+    pptx_extension:str = pathlib.Path(pptx_path).suffix
+    dirname:str = os.path.dirname(pptx_path)
 
     # process powerpoint file
-    print(f"Processing Powerpoint file: {file_path}")
-    prs = Presentation(file_path)
+    print(f"Processing Powerpoint file: {pptx_path}")
+    prs = Presentation(pptx_path)
 
     # Loop through slides
-    object_cnt:int = 0
-    for slide_cnt, slide in enumerate(prs.slides):
+    for _, slide in enumerate(prs.slides):
         slide.notes_slide.notes_text_frame.text = ""
 
-    new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_minus_notes{pptx_extension}")
-    print(f"Saving Powerpoint file with new alt-text to '{new_pptx_file_name}'\n")
+    new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_notes_removed{pptx_extension}")
     prs.save(new_pptx_file_name)
+    print(f"Saved Powerpoint file with presenter notes removed to: '{new_pptx_file_name}'\n")
 
     return err
 
-def export_slides_to_images(pptx_path:str, debug:bool=False) -> None:
+def export_presenter_notes(pptx_path:str):
+    """ export presenter notes """
+    err:bool = False
+
+    # get name and folder from Powerpoint file
+    pptx_name:str = pathlib.Path(pptx_path).stem
+    dirname:str = os.path.dirname(pptx_path)
+
+    # output file
+    notes_file_path = os.path.join(dirname, f"{pptx_name}_notes.txt")
+
+    with open(notes_file_path, "w", encoding="utf-8") as out_file:
+        print(f"Processing Powerpoint file: {pptx_path}")
+        prs = Presentation(pptx_path)
+
+        # Loop through slides
+        for slide_cnt, slide in enumerate(prs.slides):
+            if slide.shapes.title:
+                title = slide.shapes.title.text
+            else:
+                title = ""
+            str = f"=== Slide {slide_cnt} - {title} ===\n\n{slide.notes_slide.notes_text_frame.text}\n\n"
+            out_file.write(str)
+
+    if not err:
+        print(f"Exported presenter notes to file: '{notes_file_path}'")
+
+    return err
+
+def export_slides_to_images(pptx_path:str) -> bool:
     """ export slides to PNG, Windows ONLY and requires that Powerpoint is installed """
 
     err:bool = False
     dirname:str = os.path.dirname(pptx_path)
     pptx_name:str = pathlib.Path(pptx_path).stem
+
+    prs:Presentation = Presentation(pptx_path)
+    n_slides = len(prs.slides)
 
     # create folder to store images
     img_folder = os.path.join(dirname, pptx_name)
@@ -1475,7 +1653,9 @@ def export_slides_to_images(pptx_path:str, debug:bool=False) -> None:
             abs_path_to_folder_to_save = os.path.abspath(path_to_folder_to_save)
 
             for i, slide in enumerate(presentation.Slides):
-                slide.Export(f"{abs_path_to_folder_to_save}/slide{i+1}.png", "PNG")
+                p = num2str(n_slides, i + 1)
+                file_path = os.path.join(abs_path_to_folder_to_save, f"{pptx_name}-{p}.png")
+                slide.Export(file_path, "PNG")
 
             presentation.Close()
             powerpoint.Quit()
@@ -1483,15 +1663,15 @@ def export_slides_to_images(pptx_path:str, debug:bool=False) -> None:
         except Exception as e:
             print(f"Unable to export slides: {str(e)}")
             err = True
-            
-    elif platform.system() == "Darwin":
+
+    elif platform.system() != "Windows":
         # export PPTX first to PDF
         print("Exporting to PDF...")
 
         cmd:list[str] = ["soffice", "--headless", "--convert-to", "pdf", pptx_path, "--outdir", path_to_folder_to_save]
         path_to_cmd = shutil.which(cmd[0])
         if path_to_cmd is not None:
-            r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False)
+            r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
         else:
             print("Warning, LibreOffice not installed.")
 
@@ -1503,42 +1683,58 @@ def export_slides_to_images(pptx_path:str, debug:bool=False) -> None:
         cmd = ["qpdf", "--split-pages", pdf_file, out_file_name]
         path_to_cmd = shutil.which(cmd[0])
         if path_to_cmd is not None:
-            r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False)
+            r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
         else:
             print("Warning, qpdf not installed.")
 
         # export from PDF to PNG
         print("Converting each page to PNG...")
-        the_files = os.listdir(path_to_folder_to_save)
-        for f in the_files:
-            if not f.startswith(".") and f.startswith(f"{pptx_name}-"):
-                in_file = os.path.join(path_to_folder_to_save, f)
-                cmd = ["sips", "-s", "dpiWidth", "300", "-s", "dpiHeight", "300", "-s", "format", "png", in_file, "--out", path_to_folder_to_save]
-                path_to_cmd = shutil.which(cmd[0])
-                
-                if path_to_cmd is not None:
-                    r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False) #capture_output = True)
-                else:
-                    print("Unable to find 'sips'")
+        if platform.system() == "Darwin":
+            the_files = os.listdir(path_to_folder_to_save)
+            for f in the_files:
+                if not f.startswith(".") and f.startswith(f"{pptx_name}-"):
+                    in_file = os.path.join(path_to_folder_to_save, f)
+                    cmd = ["sips", "-s", "dpiWidth", "300", "-s", "dpiHeight", "300", "-s", "format", "png", in_file, "--out", path_to_folder_to_save]
+                    path_to_cmd = shutil.which(cmd[0])
 
+                    if path_to_cmd is not None:
+                        r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True) #capture_output = True)
+                    else:
+                        print("Unable to find 'sips'")
+        else:
+            # Linux
+            the_files = os.listdir(path_to_folder_to_save)
+            for f in the_files:
+                if not f.startswith(".") and f.startswith(f"{pptx_name}-"):
+                    in_file = os.path.join(path_to_folder_to_save, f"{f}[0]")
+                    out_file = f"{pathlib.Path(in_file).stem}.png"
+                    cmd = ["convert", in_file, "-density", "300", out_file]
+                    path_to_cmd = shutil.which(cmd[0])
+
+                    if path_to_cmd is not None:
+                        r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True) #capture_output = True)
+                    else:
+                        print("Unable to find 'convert'")
         # remove PDFs
         for f in the_files:
             if not f.startswith(".") and f.startswith(f"{pptx_name}-"):
                 in_file = os.path.join(path_to_folder_to_save, f)
-                os.remove(in_file)
+                pid = os.remove(in_file)
+                if pid:
+                    _ = os.wait()
 
-        # remove exported PDF file 
+        # remove exported PDF file
         #os.remove(pdf_file)
 
         print(f"Slides saved as PNG images in folder: '{path_to_folder_to_save}'")
     else:
         err = True
         print("Unable to convert PPTX to images.")
-    
-    if not err:
-        # generate pptx from slide images
-        images_to_pptx(path_to_folder_to_save, f"{pptx_name}_slides.pptx", debug)
-   
+
+    #if not err:
+    #    # generate pptx from slide images
+    #    images_to_pptx(path_to_folder_to_save, f"{pptx_name}_slides.pptx")
+
     return False
 
 def images_to_pptx(images_path:str, output_file:str="presentation.pptx", debug:bool=False) -> None:
@@ -1598,8 +1794,10 @@ def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(description='Add alt-text automatically to images and objects in Powerpoint')
     parser.add_argument("file", type=str, help="Powerpoint file")
     parser.add_argument("--report", action='store_true', default=False, help="flag to generate alt text report")
-    parser.add_argument("--model", type=str, default="", help="kosmos-2, openclip, llava, or gpt-4v")
+    parser.add_argument("--model", type=str, default="", help="kosmos-2, openclip, llava, gpt-4v")
     # LLaVA
+    parser.add_argument("--llava_model", type=str, default="llava-hf/llava-1.5-7b-hf", help="LLaVA model")
+    parser.add_argument("--use_llava_server", action='store_true', default=False, help="use a LLaVA server")
     parser.add_argument("--server", type=str, default="http://localhost", help="LLaVA server URL, default=http://localhost")
     parser.add_argument("--port", type=str, default="8007", help="LLaVA server port, default=8007")
     # OpenCLIP
@@ -1610,10 +1808,15 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--resize", type=str, default="500", help="resize image to same width and height in pixels, default:500, use 0 to disable resize")
     #
     parser.add_argument("--prompt", type=str, default="", help="custom prompt")
-    parser.add_argument("--save", action='store_true', default=False, help="flag to save powerpoint file with updated alt texts")
+    parser.add_argument("--prompt_notes", type=str, default="", help="custom prompt for presenter notes")
+    #
+    #parser.add_argument("--save", action='store_true', default=False, help="flag to save powerpoint file with updated alt texts")
     parser.add_argument("--replace", type=str, default="", help="replace alt texts in pptx with those specified in file")
-    parser.add_argument("--remove_presenter_notes", action='store_true', default="", help="remove all presenter notes")
-    parser.add_argument("--export_slides", action='store_true', default="", help="export pptx slides to png images")
+    parser.add_argument("--remove_presenter_notes", action='store_true', default=False, help="remove all presenter notes")
+    parser.add_argument("--export_presenter_notes", action='store_true', default=False, help="export presenter notes")
+    parser.add_argument("--export_slides", action='store_true', default=False, help="export pptx slides to png images")
+    #
+    parser.add_argument("--add_to_notes", action='store_true', default=False, help="add image descriptions to slide notes")
     #
     parser.add_argument("--debug", action='store_true', default=False, help="flag for debugging")
 
@@ -1632,20 +1835,25 @@ def main(argv: List[str]) -> int:
     # set default prompt
     if model_str == "gpt-4v":
         if args.prompt == "":
-            prompt = "Describe the image"
+            prompt = "Describe the image using maximal 125 characters. Do not mention the word 'image'."
     elif model_str == "llava":
         if args.prompt == "":
-            prompt = "Describe the image. Do not start the description with 'The image'"
+            prompt = "Describe the image using maximal 125 characters. Do not start the description with 'The image'."
     elif model_str == "kosmos-2":
         if args.prompt == "":
-            #prompt = "<grounding>An image of"
-            prompt = "<grounding>Describe this image in detail:"
+            prompt = "<grounding>An image of"
+            #prompt = "<grounding>Describe this image:"
     elif model_str == "qwen-vl":
         if args.prompt == "":
-            prompt = "Describe the image"
+            prompt = "Describe the image using maximal 125 characters."
     elif model_str == "cogvlm":
         if args.prompt == "":
-            prompt = "Describe the image"
+            prompt = "Describe the image using maximal 125 characters."
+
+    if args.prompt_notes == "":
+        prompt_presenter_notes = "Describe the image in detail for someone who is visually impaired. Start the desciption with 'This slide'"
+    else:
+        prompt_presenter_notes = args.prompt_notes
 
     # Read PowerPoint file and list images
     powerpoint_file_name = args.file
@@ -1653,7 +1861,6 @@ def main(argv: List[str]) -> int:
         print(f"Error: File {powerpoint_file_name} not found.")
         err = True
     else:
-
         settings:dict = {
             "report": args.report,
             "model": model_str,
@@ -1667,22 +1874,37 @@ def main(argv: List[str]) -> int:
             "qwen-vl-tokenizer": None,
             "cogvlm-model": None,
             "cogvlm-tokenizer": None,
+            "llava_model_name": args.llava_model,            
+            "use_llava_server": args.use_llava_server,
             "llava_url": f"{args.server}:{args.port}",
             "gpt4v_model": "gpt-4-vision-preview",
             "cuda_available": torch.cuda.is_available(),
             "mps_available": torch.backends.mps.is_available(),
             "prompt": prompt,
-            "img_size": int(args.resize)
+            "prompt_notes": prompt_presenter_notes,
+            "img_size": int(args.resize),
+            "add_to_notes": args.add_to_notes
         }
+
         if args.replace != "":
             # file with alt text provided
             err = replace_alt_texts(powerpoint_file_name, args.replace, args.debug)
         elif args.remove_presenter_notes:
-            err = remove_presenter_notes(powerpoint_file_name, args.debug)
+            err = remove_presenter_notes(powerpoint_file_name)
+        elif args.export_presenter_notes:
+            err = export_presenter_notes(powerpoint_file_name)
         elif args.export_slides:
-            err = export_slides_to_images(powerpoint_file_name, args.debug)
+            err = export_slides_to_images(powerpoint_file_name)
         else:
-            err = process_images_from_pptx(powerpoint_file_name, settings, args.debug)
+            if args.add_to_notes:
+                print(f"Model: {model_str}")
+                print(f"Presenter notes prompt: '{prompt_presenter_notes}'")
+                # export slides to images so that model can interpret the whole slide
+                err = export_slides_to_images(powerpoint_file_name)
+
+            # add alt-text
+            if not err:
+                err = process_images_from_pptx(powerpoint_file_name, settings, args.debug)
 
     return int(err)
 

@@ -16,6 +16,7 @@ import re
 import pathlib
 import requests
 from PIL import Image
+import psutil
 import open_clip
 import torch
 from transformers import AutoProcessor, AutoModelForVision2Seq, AutoModelForCausalLM, AutoTokenizer
@@ -239,9 +240,12 @@ def init_model(settings: dict) -> bool:
         settings["openclip-model"] = model
         settings["openclip-transform"] = transform
     elif model_str == "qwen-vl":
+        total_memory_bytes = psutil.virtual_memory().total
+        total_memory_gb = total_memory_bytes / (1024**3)
 
         if settings["cuda_available"]:
             model_name = "Qwen/Qwen-VL-Chat"
+            #model_name = "Qwen/Qwen-VL-Max"
             print(f"Qwen-VL model: '{model_name}'")
             print(f"prompt: '{prompt}'")
             print("Using CUDA.")
@@ -249,30 +253,24 @@ def init_model(settings: dict) -> bool:
             tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
             model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cuda", trust_remote_code=True).eval()
             model.generation_config = GenerationConfig.from_pretrained(model_name, trust_remote_code=True)
+        elif settings['mps_available']:
+            os.environ["ACCELERATE_USE_MPS_DEVICE"] = "True"
+            model_name = "Qwen/Qwen-VL-Chat-Int4"
+
+            if total_memory_gb >= 32:
+                print(f"Qwen-VL model: '{model_name}'")
+                print(f"prompt: '{prompt}'")
+
+                tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+                #model = AutoModelForCausalLM.from_pretrained(model_name, load_in_4bit=True, device_map="mps", trust_remote_code=True).eval()
+                model = AutoModelForCausalLM.from_pretrained(model_name, device_map="mps", trust_remote_code=True).eval()
+                model.generation_config = GenerationConfig.from_pretrained(model_name, trust_remote_code=True)
+            else:
+                print(f"Model '{model_name}' requires >= 32GB RAM.")
+                err = True
         else:
-            print("Qwen-VL requires a GPU with CUDA support.")
+            print(f"Model '{model_name}' requires a GPU with CUDA support")
             err = True
-            #model_name = "Qwen/Qwen-VL-Chat"
-            #print(f"Qwen-VL model: '{model_name}'")
-            #print(f"prompt: '{prompt}'")
-            #
-            #if settings['mps_available']:
-            #     os.environ["ACCELERATE_USE_MPS_DEVICE"] = "True"
-            #
-            # print("Not yet working on non-cuda systems")
-            # # not yet working on non-cuda systems
-            # # quantization config object
-            # # set isable_exllama=True
-            #if settings['mps_available']:
-            #   tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-            #   model = AutoModelForCausalLM.from_pretrained(model_name, load_in_4bit=True, device_map="mps", trust_remote_code=True).eval()
-            #   model.generation_config = GenerationConfig.from_pretrained(model_name, trust_remote_code=True)
-            # else:
-            #
-            # note that this model requires 33.66 GB
-            #
-            # model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cpu", trust_remote_code=True).eval()
-            # model.generation_config = GenerationConfig.from_pretrained(model_name, trust_remote_code=True)
 
         settings["qwen-vl-model"] = model
         settings["qwen-vl-tokenizer"] = tokenizer
@@ -300,15 +298,15 @@ def init_model(settings: dict) -> bool:
             #     os.environ["ACCELERATE_USE_MPS_DEVICE"] = "True"
             #     print("Activating mps device for accelerate.")
 
-            #     print("Not yet working on mps devices")
-            #     model = AutoModelForCausalLM.from_pretrained(
-            #         model_name,
-            #         load_in_4bit=True,
-            #         #torch_dtype=torch.bfloat16,
-            #         low_cpu_mem_usage=True,
-            #         trust_remote_code=True,
-            #     ).to('mps').eval()
-            # else:
+            # #     print("Not yet working on mps devices")
+            # model = AutoModelForCausalLM.from_pretrained(
+            #     model_name,
+            #     load_in_4bit=True,
+            #     #torch_dtype=torch.bfloat16,
+            #     low_cpu_mem_usage=True,
+            #     trust_remote_code=True,
+            # ).to('mps').eval()
+            # # else:
             #     print("Not yet working on cpu")
             #     model = AutoModelForCausalLM.from_pretrained(
             #         model_name,
@@ -862,7 +860,7 @@ def generate_description(image_file_path: str, extension:str, settings: dict, fo
     elif model_str == "qwen-vl":
         alt_text, err = qwen_vl(image_file_path, settings, for_notes, debug)
     elif model_str == "cogvlm":
-        alt_text, err = cogvlm(image_file_path, settings, for_notes, debug)
+        alt_text, err = cog_vlm(image_file_path, settings, for_notes, debug)
     elif model_str == "llava":
         if settings["use_llava_server"]:
             alt_text, err = llava_server(image_file_path, extension, settings, for_notes, debug)
@@ -1087,7 +1085,7 @@ def qwen_vl(image_file_path: str, settings: dict, for_notes:bool=False, debug:bo
 
     return alt_text, err
 
-def cogvlm(image_file_path: str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
+def cog_vlm(image_file_path: str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
     """ get image description from CogVLM """
     err:bool = False
 

@@ -5,13 +5,13 @@ Automatically create `Alt Text` for images and other objects in Powerpoint prese
 The script currently supports the following models:
 
 - [Qwen-VL](https://github.com/QwenLM/Qwen-VL)
-- [Cog-VL](https://github.com/THUDM/CogVLM)
+- [CogVLM](https://github.com/THUDM/CogVLM)
 - [Kosmos-2](https://github.com/microsoft/unilm/tree/master/kosmos-2)
 - [OpenCLIP](https://github.com/mlfoundations/open_clip)
 - [GPT-4V](https://openai.com/research/gpt-4v-system-card)
 - [LLaVA](https://llava-vl.github.io)
 
-All models, except GPT-4V, run locally. GPT-4V requires API access. By default, images are resized so that width and height are maximum 500 pixels before inference. Note that to use the [Qwen-VL](https://github.com/QwenLM/Qwen-VL) model, requires an NVIDIA RTX A4000 or better. For inference hardware requirements of Cog-VL, check the [Cog-VL](https://github.com/THUDM/CogVLM) github page.
+All models, except GPT-4V, run locally. GPT-4V requires API access. By default, images are resized so that width and height are maximum 500 pixels before inference. Note that to use the [Qwen-VL](https://github.com/QwenLM/Qwen-VL) model, requires an NVIDIA RTX A4000 (or better), or an M1-Max or better. For inference hardware requirements of Cog-VL, check the [Cog-VLM](https://github.com/THUDM/CogVLM) github page.
 
 ## Setup
 
@@ -75,7 +75,7 @@ BUILD_CUDA_EXT=0 pip install auto_gptq
 # else
 pip install auto_gptq
 
-pip install einops, xformers, accelerate, bitsandbytes
+pip install einops xformers accelerate bitsandbytes
 ```
 
 ## Generate accessibility report
@@ -105,9 +105,9 @@ python source/auto_alt_text.py pptx/test1.pptx --model kosmos-2 --prompt "<groun
 
 ## Qwen-VL
 
-Example command for using [Qwen-VL](https://github.com/QwenLM/Qwen-VL). Script will download the Qwen-VL-Chat model (~9.75GB).
+Example command for using [Qwen-VL](https://github.com/QwenLM/Qwen-VL). Script will download the Qwen-VL-Chat model (~9.75GB) if CUDA support is available. On Apple Silicon Macs the Qwen-VL-Chat-Int4 is used.
 
-Using this model requires an NVIDEA GPU. Only tested with an RTX A4000 GPU on Windows.
+Qwen-VL only tested with an RTX A4000 GPU on Windows and with an M1-Max on macOS (32GB RAM).
 
 ```sh
 python source/auto_alt_text.py pptx/test1.pptx --model qwen-vl

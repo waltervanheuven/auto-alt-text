@@ -4,3 +4,4 @@ venv/*
 llama.cpp/*
 llava/*
 *.log
+*.ttf

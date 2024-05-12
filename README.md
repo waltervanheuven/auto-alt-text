@@ -11,7 +11,7 @@ The script currently supports the following models:
 - [GPT-4V](https://openai.com/research/gpt-4v-system-card)
 - Multimodal models, such as [LLaVA](https://llava-vl.github.io) are supported through [Ollama](https://ollama.com)
 
-All models, except GPT-4V, run locally. GPT-4V requires API access. By default, images are resized so that width and height are maximum 500 pixels before inference. Note that to use the [Qwen-VL](https://github.com/QwenLM/Qwen-VL) model, requires an NVIDIA RTX A4000 (or better), or an M1-Max or better. For inference hardware requirements of Cog-VL, check the [Cog-VLM](https://github.com/THUDM/CogVLM) github page.
+All models, except GPT-4V, run locally. GPT-4V requires API access. By default, images are resized so that width and height are maximum 500 pixels before inference. The [Qwen-VL](https://github.com/QwenLM/Qwen-VL) model requires an NVIDIA RTX A4000 (or better), or an M1-Max or better. For inference hardware requirements of Cog-VLM, check the [github page](https://github.com/THUDM/CogVLM).
 
 ## Setup
 

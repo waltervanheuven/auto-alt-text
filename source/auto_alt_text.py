@@ -22,7 +22,7 @@ import psutil
 import open_clip
 import torch
 #import ollama
-from transformers import AutoProcessor, AutoModelForVision2Seq, AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoProcessor, AutoModelForVision2Seq, AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer
 #from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
 from transformers.generation import GenerationConfig
 from pptx import Presentation
@@ -246,12 +246,27 @@ def init_model(settings: dict) -> bool:
     elif model_str == "openclip":
         # OpenCLIP
         print(f"OpenCLIP model: '{settings['openclip_model_name']}'\npretrained model: '{settings['openclip_pretrained']}'")
-        model, _, transform = open_clip.create_model_and_transforms(
-            model_name=settings["openclip_model_name"],
-            pretrained=settings["openclip_pretrained"]
-        )
-        settings["openclip-model"] = model
-        settings["openclip-transform"] = transform
+
+        #model, preprocess = open_clip.create_model_from_pretrained(settings["openclip_model_name"])
+        #tokenizer = open_clip.get_tokenizer(settings["openclip_pretrained"])
+
+        if settings["cuda_available"]:
+            my_device = "cuda"
+        else:
+            print("Note that non-cuda devices are not support yet")
+            my_device = "mps"
+            err = True
+
+        if not err:
+            model, _, preprocess = open_clip.create_model_and_transforms(
+                model_name=settings["openclip_model_name"],
+                pretrained=settings["openclip_pretrained"],
+                device=my_device,
+                precision="fp16"
+            )
+            settings["openclip-model"] = model
+            settings["openclip-preprocess"] = preprocess
+
     elif model_str == "qwen-vl":
         total_memory_bytes = psutil.virtual_memory().total
         total_memory_gb = total_memory_bytes / (1024**3)
@@ -269,6 +284,7 @@ def init_model(settings: dict) -> bool:
         elif settings['mps_available']:
             os.environ["ACCELERATE_USE_MPS_DEVICE"] = "True"
             model_name = "Qwen/Qwen-VL-Chat-Int4"
+            #model_name = "Qwen/Qwen-VL"
 
             if total_memory_gb >= 32:
                 print(f"Qwen-VL model: '{model_name}'")
@@ -1006,13 +1022,17 @@ def openclip(image_file_path: str, settings: dict, for_notes:bool=False, debug:b
         # resize image
         img = resize(img, settings)
 
-        transform = settings["openclip-transform"]
-        img = transform(img).unsqueeze(0)
+        preprocess = settings["openclip-preprocess"]
+        img = preprocess(img).unsqueeze(0)
 
-        # use OpenCLIP model to create label
-        model = settings["openclip-model"]
+    # use OpenCLIP model to create label
+    model = settings["openclip-model"]
 
+    if settings["cuda_available"]:
         with torch.no_grad(), torch.cuda.amp.autocast():
+            generated = model.generate(img)
+    else:
+        with torch.no_grad(): #, torch.autocast('mps'):
             generated = model.generate(img)
 
     # get picture description and remove trailing spaces
@@ -1880,7 +1900,7 @@ def main() -> int:
             "openclip_model_name": args.openclip_model,
             "openclip_pretrained": args.openclip_pretrained,
             "openclip-model": None,
-            "openclip-transform": None,
+            "openclip-preprocess": None,
             "qwen-vl-model": None,
             "qwen-vl-tokenizer": None,
             "cogvlm-model": None,

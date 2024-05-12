@@ -7,3 +7,5 @@ torch
 openai
 comtypes; platform_system == "Windows"
 psutil
+ollama
+accelerate

@@ -2,7 +2,7 @@
 Generate Alt Text for each picture in a powerpoint file using MLLM and V-L pre-trained models
 """
 
-from typing import List
+from typing import Tuple
 import os
 import sys
 import io
@@ -12,15 +12,18 @@ import argparse
 import base64
 import platform
 import csv
+import json
 import re
 import pathlib
 import requests
+from urllib3.exceptions import HTTPError
 from PIL import Image
 import psutil
 import open_clip
 import torch
+#import ollama
 from transformers import AutoProcessor, AutoModelForVision2Seq, AutoModelForCausalLM, AutoTokenizer
-from transformers import LlamaTokenizer, LlavaForConditionalGeneration
+#from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
 from transformers.generation import GenerationConfig
 from pptx import Presentation
 from pptx.util import Cm
@@ -116,7 +119,7 @@ def process_images_from_pptx(file_path: str, settings: dict, debug: bool = False
 
     if not report:
         # generate alt text
-        out_file_name = os.path.join(dirname, f"{pptx_name}_{model_str}.txt")
+        out_file_name = os.path.join(dirname, f"{pptx_name}_{model_str.replace(":", "_")}.txt")
     elif report:
         # just report
         out_file_name = os.path.join(dirname, f"{pptx_name}.txt")
@@ -198,7 +201,7 @@ def process_images_from_pptx(file_path: str, settings: dict, debug: bool = False
         pptx_file:str = ""
         if not report:
             # Save new pptx file
-            new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_{model_str}{pptx_extension}")
+            new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_{model_str.replace(":", "_")}{pptx_extension}")
             print(f"Saving Powerpoint file with new alt-text to '{new_pptx_file_name}'\n")
             prs.save(new_pptx_file_name)
             pptx_file = new_pptx_file_name
@@ -218,7 +221,17 @@ def init_model(settings: dict) -> bool:
     model = None
     tokenizer = None
 
-    if model_str == "kosmos-2":
+    if settings["use_ollama"]:
+        print(f"Ollama server: {settings['ollama_url']}")
+        
+        # check if Ollama model is available on the server
+        err, full_model_name = check_ollama_model_available(settings)
+
+        if not err:
+            settings['model'] = full_model_name
+            print(f"Model: {settings['model']}")
+            print(f"Prompt: '{prompt}'")
+    elif model_str == "kosmos-2":
         # Kosmos-2 model
         model_name = "microsoft/kosmos-2-patch14-224"
         print(f"Kosmos-2 model: '{model_name}'")
@@ -317,47 +330,6 @@ def init_model(settings: dict) -> bool:
         settings["cogvlm-model"] = model
         settings["cogvlm-tokenizer"] = tokenizer
 
-    elif model_str == "llava":
-        if not settings["use_llava_server"]:
-            # LLaVA
-            #model_name = "llava-hf/llava-1.5-7b-hf"
-            model_name = settings["llava_model_name"]
-            print(f"LLaVA model: '{model_name}'")
-            print(f"prompt: '{prompt}'")
-
-            if settings["cuda_available"]:
-                model = LlavaForConditionalGeneration.from_pretrained(
-                    model_name,
-                    torch_dtype=torch.float16,
-                    device_map="auto",
-                    low_cpu_mem_usage=True,
-                    load_in_4bit=True,
-                ).to(0)
-                settings["lava-model"] = model
-            elif settings["mps_available"]:
-                # not yet supported
-                print("LLaVA requires a GPU with CUDA support.")
-                err = True
-                # model = LlavaForConditionalGeneration.from_pretrained(
-                #     model_name,
-                #     torch_dtype=torch.float16,
-                #     device_map="mps",
-                #     low_cpu_mem_usage=True,
-                #     #load_in_4bit=True,
-                # ).to('mps')
-                settings["lava-model"] = model
-            else:
-                print("LLaVA requires a GPU with CUDA support.")
-                err = True
-        else:
-            server_url = settings["llava_url"]
-            if check_server_is_running(server_url):
-                server_url = f"{server_url}/completion"
-                print(f"LLaVA server: '{server_url}'")
-                print(f"prompt: '{prompt}'")
-            else:
-                print(f"Unable to access server at '{server_url}'.")
-                err = True
     elif model_str == "gpt-4v":
         print("GPT-4V")
         print(f"model: {settings['gpt4v_model']}")
@@ -737,14 +709,14 @@ def cleanup_name_object(txt:str) -> str:
     else:
         last_word = elements[-1]
         try:
-            number = int(last_word)
+            _ = int(last_word)
             s = ' '.join(elements[:-1])
         except ValueError:
             s = txt
 
     return s
 
-def combine_images_in_group(images, group_shape):
+def combine_images_in_group(images, group_shape) -> Image:
     """ 
     Create new image based on shape
 
@@ -760,13 +732,13 @@ def combine_images_in_group(images, group_shape):
     new_img = Image.new('RGB', (new_img_width, new_img_height))
 
     # Paste each image into the new image at its relative position
-    for image, left, top, alt_text in images:
+    for image, left, top, _ in images:
         print(f"img: {image.width}, {image.height}, {left}, {top}")
         new_img.paste(image, (int(left / EMU_PER_PIXEL), int(top / EMU_PER_PIXEL)))
 
     return new_img
 
-def process_shape_and_generate_alt_text(shape:BaseShape, pptx:dict, settings:dict, debug:bool=False) -> [bool, str]:
+def process_shape_and_generate_alt_text(shape:BaseShape, pptx:dict, settings:dict, debug:bool=False) -> Tuple[bool, str]:
     """ 
     Save image associated with shape and generate alt text
     """
@@ -842,7 +814,7 @@ def process_shape_and_generate_alt_text(shape:BaseShape, pptx:dict, settings:dic
 
     return err, image_file_path
 
-def generate_description(image_file_path: str, extension:str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
+def generate_description(image_file_path: str, extension:str, settings: dict, for_notes:bool=False, debug:bool=False) -> Tuple[str, bool]:
     """ generate image text description using MLLM/VL model """
     err:bool = False
     alt_text:str = ""
@@ -853,27 +825,28 @@ def generate_description(image_file_path: str, extension:str, settings: dict, fo
     else:
         print("Generating alt text...")
 
-    if model_str == "kosmos-2":
-        alt_text, err = kosmos2(image_file_path, settings, for_notes, debug)
-    elif model_str == "openclip":
-        alt_text, err = openclip(image_file_path, settings, for_notes, debug)
-    elif model_str == "qwen-vl":
-        alt_text, err = qwen_vl(image_file_path, settings, for_notes, debug)
-    elif model_str == "cogvlm":
-        alt_text, err = cog_vlm(image_file_path, settings, for_notes, debug)
-    elif model_str == "llava":
-        if settings["use_llava_server"]:
-            alt_text, err = llava_server(image_file_path, extension, settings, for_notes, debug)
-        else:
-            alt_text, err = llava(image_file_path, extension, settings, for_notes, debug)
-    elif model_str == "gpt-4v":
-        alt_text, err = gpt4v(image_file_path, extension, settings, for_notes, debug)
+    if settings["use_ollama"]:
+        alt_text, err = use_ollama(image_file_path, extension, settings, for_notes, debug)
     else:
-        print(f"Unknown model: {model_str}")
+        if model_str == "kosmos-2":
+            alt_text, err = kosmos2(image_file_path, settings, for_notes, debug)
+        elif model_str == "openclip":
+            alt_text, err = openclip(image_file_path, settings, for_notes, debug)
+        elif model_str == "qwen-vl":
+            alt_text, err = qwen_vl(image_file_path, settings, for_notes, debug)
+        elif model_str == "cogvlm":
+            alt_text, err = cog_vlm(image_file_path, settings, for_notes, debug)
+        elif model_str == "gpt-4v":
+            alt_text, err = gpt4v(image_file_path, extension, settings, for_notes, debug)
+        else:
+            print(f"Unknown model: {model_str}")
 
-    return alt_text, err
+    # remove space at the end
+    alt_text = alt_text.rstrip()
 
-def kosmos2(image_file_path: str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
+    return alt_text.lstrip(), err
+
+def kosmos2(image_file_path: str, settings: dict, for_notes:bool=False, debug:bool=False) -> Tuple[str, bool]:
     """ get image description from Kosmos-2 """
     err:bool = False
 
@@ -935,7 +908,7 @@ def kosmos2(image_file_path: str, settings: dict, for_notes:bool=False, debug:bo
 
     return alt_text, err
 
-def check_readonly_formats(image_file_path: str, settings: dict) -> [str, str, bool]:
+def check_readonly_formats(image_file_path: str, settings: dict) -> Tuple[str, str, bool]:
     """
     Check if image format is WMF, WME, or PSD which can not be converted using the pillow library.
 
@@ -1020,7 +993,7 @@ def resize(image:Image.Image, settings:dict) -> Image.Image:
 
     return image
 
-def openclip(image_file_path: str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
+def openclip(image_file_path: str, settings: dict, for_notes:bool=False, debug:bool=False) -> Tuple[str, bool]:
     """ get image description from OpenCLIP """
     err:bool = False
 
@@ -1050,7 +1023,7 @@ def openclip(image_file_path: str, settings: dict, for_notes:bool=False, debug:b
 
     return alt_text, err
 
-def qwen_vl(image_file_path: str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
+def qwen_vl(image_file_path: str, settings: dict, for_notes:bool=False, debug:bool=False) -> Tuple[str, bool]:
     """ get image description from Qwen-VL """
     err:bool = False
 
@@ -1085,7 +1058,7 @@ def qwen_vl(image_file_path: str, settings: dict, for_notes:bool=False, debug:bo
 
     return alt_text, err
 
-def cog_vlm(image_file_path: str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
+def cog_vlm(image_file_path: str, settings: dict, for_notes:bool=False, debug:bool=False) -> Tuple[str, bool]:
     """ get image description from CogVLM """
     err:bool = False
 
@@ -1143,71 +1116,6 @@ def cog_vlm(image_file_path: str, settings: dict, for_notes:bool=False, debug:bo
 
     return alt_text, err
 
-def llava_server(image_file_path: str, extension:str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
-    """ use LLaVA through llava.cpp server """
-    err:bool = False
-    alt_text:str = ""
-
-    # check if readonly
-    image_file_path, readonly, msg = check_readonly_formats(image_file_path, settings)
-    if readonly:
-        return msg, False
-
-    with Image.open(image_file_path) as img:
-        if img.format != 'JPEG':
-            # convert images to JPEG
-            basename:str = os.path.basename(image_file_path).split(".")[0]
-            jpeg_image_file_path = os.path.join(os.path.dirname(image_file_path), f"{basename}.jpg")
-
-            # Convert the image to RGB mode in case it's not
-            img = img.convert('RGB')
-            # Save the image as JPEG
-            img.save(jpeg_image_file_path, 'JPEG')
-
-            image_file_path = jpeg_image_file_path
-
-    # get image and convert to base64_str
-    img_base64_str = img_file_to_base64(image_file_path, settings, debug)
-
-    # Use LLaVa to get image descriptions
-    server_url:str = f"{settings['llava_url']}/completion"
-
-    # prompt
-    if for_notes:
-        prompt:str = settings["prompt_notes"]
-    else:
-        prompt:str = settings["prompt"]
-
-    header:str = {"Content-Type": "application/json"}
-    data = {
-        "image_data": [{"data": img_base64_str, "id": 1}],
-        "prompt": f"USER:[img-1] {prompt}\nASSISTANT:",
-        "n_predict": 512,
-        "temperature": 0.1
-    }
-
-    try:
-        response = requests.post(server_url, headers=header, json=data, timeout=30)
-        response_data = response.json()
-
-        if debug:
-            print(response_data)
-            print()
-    except requests.exceptions.Timeout:
-        print("Timeout")
-        err = True
-    except requests.exceptions.RequestException as e:
-        print(f"LLaVA exception, img: {os.path.basename(image_file_path)}")
-        err = True
-    else:
-        # get picture description and remove trailing spaces
-        alt_text = response_data.get('content', '').strip()
-
-        # remove returns
-        alt_text = replace_newline_with_space(alt_text)
-
-    return alt_text, err
-
 def img_file_to_base64(image_file_path:str , settings: dict, debug:bool=False) -> str:
     """ load image, resize, and convert to base64_str """
     with Image.open(image_file_path) as original_img:
@@ -1229,36 +1137,10 @@ def img_file_to_base64(image_file_path:str , settings: dict, debug:bool=False) -
 
     return base64_str
 
-def llava(image_file_path: str, extension:str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
-    """ run LLaVA model through huggingface transformers """
-    err:bool = False
-
-    model_name = settings["llava_model_name"]
-
-    # prompt
-    if for_notes:
-        prompt:str = settings["prompt_notes"]
-    else:
-        prompt:str = settings["prompt"]
-
-    model = settings["lava-model"]
-    processor = AutoProcessor.from_pretrained(model_name)
-
-    with Image.open(image_file_path) as original_img:
-        im = original_img.convert("RGB")
-        inputs = processor(prompt, im, return_tensors='pt').to("mps")    #to(0, torch.float16)
-
-    #alt_text = model.generate(**inputs, max_new_tokens=200, do_sample=False)
-
-    inputs = processor(prompt, return_tensors='pt').to("mps")
-    alt_text = model.generate(**inputs, max_new_tokens=200, do_sample=False)
-
-    return alt_text, err
-
-def gpt4v(image_file_path: str, extension:str, settings: dict, for_notes:bool=False, debug:bool=False) -> [str, bool]:
+def gpt4v(image_file_path: str, extension:str, settings: dict, for_notes:bool=False, debug:bool=False) -> Tuple[str, bool]:
     """ get image description from GPT-4V """
     err:bool = False
-    alt_text:str = ""
+    alt_text:str = "Error"
 
     # check if readonly
     image_file_path, readonly, msg = check_readonly_formats(image_file_path, settings)
@@ -1319,10 +1201,14 @@ def gpt4v(image_file_path: str, extension:str, settings: dict, for_notes:bool=Fa
             "max_tokens": 300
         }
 
+        gpt4v_server = "https://api.openai.com/v1/chat/completions"
         try:
-            response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=20)
+            response = requests.post(gpt4v_server, headers=headers, json=payload, timeout=20)
 
             json_out = response.json()
+
+            if debug:
+                print(json.dumps(json_out, indent=4))
 
             if 'error' in json_out:
                 print()
@@ -1330,14 +1216,136 @@ def gpt4v(image_file_path: str, extension:str, settings: dict, for_notes:bool=Fa
                 err = True
             else:
                 alt_text = json_out["choices"][0]["message"]["content"]
+        except requests.exceptions.ConnectionError:
+            print(f"ConnectionError: Unable to access the server at: '{gpt4v_server}'")
+            err = True
         except TimeoutError:
-            print(f"TimeoutError")
+            print("TimeoutError")
             err = True
         except Exception as e:
             print(f"Exception: '{str(e)}'")
-            if debug:
-                print(json_out)
             err = True
+
+    return alt_text, err
+
+def check_ollama_model_available(settings:dict) -> bool:
+    " Check if model is available on Ollama server "
+    err:bool = False
+    model_specified = settings["model"]
+    if ":" not in model_specified:
+        model_specified = f"{model_specified}:latest"
+
+    # check if model available
+    ollama_url = f"{settings['ollama_url']}/api/tags"
+    try:
+        response = requests.get(ollama_url, timeout=10)
+        response.raise_for_status()
+        
+    except requests.exceptions.ConnectionError:
+        print(f"ConnectionError: Unable to access the server at: '{ollama_url}'")
+        err = True
+    except TimeoutError:
+        print("TimeoutError")
+        err = True
+    else:
+        json_out = response.json()
+        ollama_model_response = json_out["models"]
+
+        err = True
+        all_models = []
+        for m in ollama_model_response:
+            if model_specified == m['name']:
+                err = False
+            all_models.append(m['name'])
+        
+        if err:
+            print("Models available on the Ollama server:")
+            for m in all_models:
+                print(f"  {m}")
+            print()
+            print(f"Model '{model_specified}' not found on Ollama server: '{ollama_url}'.")
+            print("Please pull the model using Ollama or use one of the other models available.\n")
+
+    return err, model_specified
+
+def use_ollama(image_file_path: str, extension:str, settings: dict, for_notes:bool=False, debug:bool=False) -> Tuple[str, bool]:
+    """ get image description from model accessed Ollama server """
+    err:bool = False
+    alt_text:str = "Error"
+
+    if not err:
+        # check if readonly
+        image_file_path, readonly, msg = check_readonly_formats(image_file_path, settings)
+        if readonly:
+            return msg, False
+
+        # convert image to JPEG
+        basename:str = os.path.basename(image_file_path).split(".")[0]
+        jpeg_image_file_path = os.path.join(os.path.dirname(image_file_path), f"{basename}.jpg")
+
+        img_base64_str = ""
+        with Image.open(image_file_path) as img:
+            if img.format != 'JPEG':
+                # Convert the image to RGB mode in case it's not
+                img = img.convert('RGB')
+                # Save the image as JPEG
+                img.save(jpeg_image_file_path, 'JPEG')
+
+                image_file_path = jpeg_image_file_path
+
+            print(f"Image file size: {os.path.getsize(image_file_path)}")
+
+            # get image and convert to base64_str
+            img_base64_str = img_file_to_base64(image_file_path, settings)
+
+    if not err and len(img_base64_str) > 0:
+        # prompt
+        if for_notes:
+            prompt:str = settings["prompt_notes"]
+        else:
+            prompt:str = settings["prompt"]
+
+        headers = {
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "model": settings["model"],
+            "prompt": f"{prompt}",
+            "stream": False,
+            "images": [ img_base64_str ]
+        }
+
+        # http://localhost:11434/api/generate
+        ollama_url = f"{settings['ollama_url']}/api/generate"
+        try:
+            response = requests.post(ollama_url, headers=headers, json=payload, timeout=60)
+            response.raise_for_status()
+        except requests.exceptions.ConnectionError:
+            print(f"ConnectionError: Unable to access the server at: '{ollama_url}'")
+            err = True
+        except TimeoutError:
+            print("TimeoutError")
+            err = True
+        else:
+            json_out = response.json()
+
+            if debug:
+                print(json.dumps(json_out, indent=4))
+
+            if 'error' in json_out:
+                print("ERROR in ouput")
+                print(json.dumps(json_out, indent=4))
+                err = True
+            else:
+                alt_text = json_out["response"]
+                # remove newlines
+                alt_text = alt_text.replace("\n", " ")
+                # remove double spaces
+                alt_text = alt_text.replace("  ", " ")
+    else:
+        print("Error, image size is zero")
+        err = True
 
     return alt_text, err
 
@@ -1590,7 +1598,7 @@ def remove_presenter_notes(pptx_path:str) -> bool:
 
     return err
 
-def export_presenter_notes(pptx_path:str):
+def export_presenter_notes(pptx_path:str) -> bool:
     """ export presenter notes """
     err:bool = False
 
@@ -1733,7 +1741,7 @@ def export_slides_to_images(pptx_path:str) -> bool:
     #    # generate pptx from slide images
     #    images_to_pptx(path_to_folder_to_save, f"{pptx_name}_slides.pptx")
 
-    return False
+    return err
 
 def images_to_pptx(images_path:str, output_file:str="presentation.pptx", debug:bool=False) -> None:
     """
@@ -1785,7 +1793,8 @@ def images_to_pptx(images_path:str, output_file:str="presentation.pptx", debug:b
 
     print(f"Saved pptx to '{out}'.")
 
-def main(argv: List[str]) -> int:
+# argv: List[str]
+def main() -> int:
     """ main """
     err:bool = False
 
@@ -1793,11 +1802,12 @@ def main(argv: List[str]) -> int:
     parser.add_argument("file", type=str, help="Powerpoint file")
     parser.add_argument("--report", action='store_true', default=False, help="flag to generate alt text report")
     parser.add_argument("--model", type=str, default="", help="kosmos-2, openclip, llava, gpt-4v")
-    # LLaVA
-    parser.add_argument("--llava_model", type=str, default="llava-hf/llava-1.5-7b-hf", help="LLaVA model")
-    parser.add_argument("--use_llava_server", action='store_true', default=False, help="use a LLaVA server")
-    parser.add_argument("--server", type=str, default="http://localhost", help="LLaVA server URL, default=http://localhost")
-    parser.add_argument("--port", type=str, default="8007", help="LLaVA server port, default=8007")
+
+    # Ollama
+    parser.add_argument("--use_ollama", action='store_true', default=False, help="use Ollama server")
+    parser.add_argument("--server", type=str, default="http://localhost", help="Ollama server URL, default=http://localhost")
+    parser.add_argument("--port", type=str, default="11434", help="Ollama server port, default=11434")
+
     # OpenCLIP
     parser.add_argument("--show_openclip_models", action='store_true', default=False, help="show OpenCLIP models and pretrained models")
     parser.add_argument("--openclip_model", type=str, default="coca_ViT-L-14", help="OpenCLIP model")
@@ -1833,23 +1843,26 @@ def main(argv: List[str]) -> int:
     # set default prompt
     if model_str == "gpt-4v":
         if args.prompt == "":
-            prompt = "Describe the image using maximal 125 characters. Do not mention the word 'image'."
-    elif model_str == "llava":
-        if args.prompt == "":
-            prompt = "Describe the image using maximal 125 characters. Do not start the description with 'The image'."
+            prompt = "Describe the image using one or two sentences. Do not mention the word 'image'."
     elif model_str == "kosmos-2":
         if args.prompt == "":
             prompt = "<grounding>An image of"
             #prompt = "<grounding>Describe this image:"
     elif model_str == "qwen-vl":
         if args.prompt == "":
-            prompt = "Describe the image using maximal 125 characters."
+            prompt = "Describe the image using one or two sentences."
     elif model_str == "cogvlm":
         if args.prompt == "":
-            prompt = "Describe the image using maximal 125 characters."
+            prompt = "Describe the image using one or two sentences."
+    elif args.use_ollama:
+        if args.prompt == "":
+            prompt = "You are an expert at understanding images and graphs. Answer concisely for someone who is visually impaired. Describe what you see. Your response should be one or two sentences."
+    else:
+        if args.prompt == "":
+            prompt = "Describe image. Your response should be one or two sentences."
 
     if args.prompt_notes == "":
-        prompt_presenter_notes = "Describe the image in detail for someone who is visually impaired. Start the desciption with 'This slide'"
+        prompt_presenter_notes = "Describe the image in a few sentences for someone who is visually impaired. Start the desciption with 'This slide'"
     else:
         prompt_presenter_notes = args.prompt_notes
 
@@ -1872,9 +1885,8 @@ def main(argv: List[str]) -> int:
             "qwen-vl-tokenizer": None,
             "cogvlm-model": None,
             "cogvlm-tokenizer": None,
-            "llava_model_name": args.llava_model,            
-            "use_llava_server": args.use_llava_server,
-            "llava_url": f"{args.server}:{args.port}",
+            "use_ollama": args.use_ollama,
+            "ollama_url": f"{args.server}:{args.port}",
             "gpt4v_model": "gpt-4-vision-preview",
             "cuda_available": torch.cuda.is_available(),
             "mps_available": torch.backends.mps.is_available(),
@@ -1907,5 +1919,5 @@ def main(argv: List[str]) -> int:
     return int(err)
 
 if __name__ == "__main__":
-    EXIT_CODE = main(sys.argv[1:])
+    EXIT_CODE = main() #main(sys.argv[1:])
     sys.exit(EXIT_CODE)

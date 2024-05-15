@@ -1824,7 +1824,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description='Add alt-text automatically to images and objects in Powerpoint')
     parser.add_argument("file", type=str, help="Powerpoint file")
     parser.add_argument("--report", action='store_true', default=False, help="flag to generate alt text report")
-    parser.add_argument("--model", type=str, default="", help="kosmos-2, openclip, llava, gpt-4v")
+    parser.add_argument("--model", type=str, default="", help="kosmos-2, openclip, llava, gpt-4o, gpt-4-turbo")
 
     # Ollama
     parser.add_argument("--use_ollama", action='store_true', default=False, help="use Ollama server")

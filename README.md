@@ -133,18 +133,20 @@ python source/auto_alt_text.py pptx/test1.pptx --show_openclip_models
 python source/auto_alt_text.py pptx/test1.pptx --model openclip --openclip_model coca_ViT-L-14 --openclip_pretrained mscoco_finetuned_laion2B-s13B-b90k
 ```
 
-## GPT-4V
+## OpenAI Vision models
 
-To use [GPT-4V](https://openai.com/research/gpt-4v-system-card) you need to have [API access](https://help.openai.com/en/articles/7102672-how-can-i-access-gpt-4). Images will be send to OpenAI servers for inference. Costs for using the API depend on the size and number the images. API access [pricing information](https://openai.com/pricing#language-models). The script uses the OPENAI_API_KEY environment variable. Information how to set/add this variable can be found in the [OpenAI quickstart docs](https://platform.openai.com/docs/quickstart?context=python).
+To use [OpenAI](https://openai.com)'s models that support vision ([GPT-4o](https://openai.com/index/hello-gpt-4o/), GPT-4 Turbo) you need to have [API access](https://help.openai.com/en/articles/7102672-how-can-i-access-gpt-4). Images will be send to OpenAI servers for inference. Costs for using the API depends on the size and number the images. API access [pricing information](https://openai.com/pricing#language-models). The script uses the OPENAI_API_KEY environment variable. Information how to set/add this variable can be found in the [OpenAI quickstart docs](https://platform.openai.com/docs/quickstart?context=python).
+
+To use GPT-4o, use `--model gpt-4o`, for GPT-4 Turbo, use `--model gpt-4-turbo`.
 
 ```sh
-python source/auto_alt_text.py pptx/test1.pptx --model gpt-4v
+python source/auto_alt_text.py pptx/test1.pptx --model gpt-4o
 
 # custom prompt
-python source/auto_alt_text.py pptx/test1.pptx --model gpt-4v --prompt "Describe clearly in two sentences"
+python source/auto_alt_text.py pptx/test1.pptx --model gpt-4o --prompt "Provide an image caption"
 ```
 
-## LLaVA and other multimodal LLMs
+## LLaVA and other Multimodal LLMs
 
 LLaVA or other multimodal large language models can be used through [Ollama](https://ollama.com/). These models will run locally. Which model you can use depends on the capabilities of your computer (e.g. memory, GPU).
 
@@ -163,16 +165,16 @@ ollama list
 ### Example of using LLaVA through Ollama
 
 ```sh
-python source/auto_alt_text.py pptx/test1.pptx --model  llava --use_ollama
+python source/auto_alt_text.py pptx/test1.pptx --model llava --use_ollama
 
 # to disable default image resizing to 500px x 500px, set resize size to 0
-python source/auto_alt_text.py pptx/test1.pptx --model  llava --use_ollama --resize 0
+python source/auto_alt_text.py pptx/test1.pptx --model llava --use_ollama --resize 0
 
 # specify a different prompt
 python source/auto_alt_text.py pptx/test1.pptx --model llava --use_ollama --prompt "Describe in simple words using one sentence."
 
 # specify differ server or port of the ollama server, default server is localhost, and port is 11434
-python source/auto_alt_text.py pptx/test1.pptx --model  llava --use_ollama --server my_server.com --port 3456
+python source/auto_alt_text.py pptx/test1.pptx --model llava --use_ollama --server my_server.com --port 3456
 ```
 
 ## Edit generated alt texts and apply to Powerpoint file

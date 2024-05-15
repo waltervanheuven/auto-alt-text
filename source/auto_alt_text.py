@@ -16,20 +16,23 @@ import json
 import re
 import pathlib
 import requests
-from urllib3.exceptions import HTTPError
+#from urllib3.exceptions import HTTPError
 from PIL import Image
 import psutil
 import open_clip
 import torch
 #import ollama
-from transformers import AutoProcessor, AutoModelForVision2Seq, AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer
+from transformers import AutoProcessor, AutoModelForVision2Seq
+from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer
 #from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
 from transformers.generation import GenerationConfig
+from openai import OpenAI
 from pptx import Presentation
 from pptx.util import Cm
 from pptx.oxml.ns import _nsmap
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.shapes.base import BaseShape
+
 
 def check_server_is_running(url: str) -> bool:
     """ URL accessible? """    
@@ -346,9 +349,9 @@ def init_model(settings: dict) -> bool:
         settings["cogvlm-model"] = model
         settings["cogvlm-tokenizer"] = tokenizer
 
-    elif model_str == "gpt-4v":
-        print("GPT-4V")
-        print(f"model: {settings['gpt4v_model']}")
+    elif model_str == "gpt-4o" or model_str == "gpt-4-turbo":
+        print("OpenAI")
+        print(f"model: {model_str}")
         print(f"prompt: '{prompt}'")
     else:
         print(f"Unknown model: '{model_str}'")
@@ -852,8 +855,8 @@ def generate_description(image_file_path: str, extension:str, settings: dict, fo
             alt_text, err = qwen_vl(image_file_path, settings, for_notes, debug)
         elif model_str == "cogvlm":
             alt_text, err = cog_vlm(image_file_path, settings, for_notes, debug)
-        elif model_str == "gpt-4v":
-            alt_text, err = gpt4v(image_file_path, extension, settings, for_notes, debug)
+        elif model_str == "gpt-4o" or model_str == "gpt-4-turbo":
+            alt_text, err = use_openai(image_file_path, extension, settings, for_notes, debug)
         else:
             print(f"Unknown model: {model_str}")
 
@@ -1157,7 +1160,7 @@ def img_file_to_base64(image_file_path:str , settings: dict, debug:bool=False) -
 
     return base64_str
 
-def gpt4v(image_file_path: str, extension:str, settings: dict, for_notes:bool=False, debug:bool=False) -> Tuple[str, bool]:
+def use_openai(image_file_path: str, extension:str, settings: dict, for_notes:bool=False, debug:bool=False) -> Tuple[str, bool]:
     """ get image description from GPT-4V """
     err:bool = False
     alt_text:str = "Error"
@@ -1200,7 +1203,7 @@ def gpt4v(image_file_path: str, extension:str, settings: dict, for_notes:bool=Fa
             "Authorization": f"Bearer {api_key}"
         }
         payload = {
-            "model": settings["gpt4v_model"],
+            "model": settings["model"],
             "messages": [
             {
                 "role": "user",
@@ -1221,9 +1224,9 @@ def gpt4v(image_file_path: str, extension:str, settings: dict, for_notes:bool=Fa
             "max_tokens": 300
         }
 
-        gpt4v_server = "https://api.openai.com/v1/chat/completions"
+        openai_server = "https://api.openai.com/v1/chat/completions"
         try:
-            response = requests.post(gpt4v_server, headers=headers, json=payload, timeout=20)
+            response = requests.post(openai_server, headers=headers, json=payload, timeout=20)
 
             json_out = response.json()
 
@@ -1237,7 +1240,7 @@ def gpt4v(image_file_path: str, extension:str, settings: dict, for_notes:bool=Fa
             else:
                 alt_text = json_out["choices"][0]["message"]["content"]
         except requests.exceptions.ConnectionError:
-            print(f"ConnectionError: Unable to access the server at: '{gpt4v_server}'")
+            print(f"ConnectionError: Unable to access the server at: '{openai_server}'")
             err = True
         except TimeoutError:
             print("TimeoutError")
@@ -1861,7 +1864,7 @@ def main() -> int:
         return int(err)
 
     # set default prompt
-    if model_str == "gpt-4v":
+    if model_str == "gpt-4-turbo" or model_str == "gpt-4o":
         if args.prompt == "":
             prompt = "Describe the image using one or two sentences. Do not mention the word 'image'."
     elif model_str == "kosmos-2":
@@ -1907,7 +1910,6 @@ def main() -> int:
             "cogvlm-tokenizer": None,
             "use_ollama": args.use_ollama,
             "ollama_url": f"{args.server}:{args.port}",
-            "gpt4v_model": "gpt-4-vision-preview",
             "cuda_available": torch.cuda.is_available(),
             "mps_available": torch.backends.mps.is_available(),
             "prompt": prompt,

@@ -26,7 +26,7 @@ from transformers import AutoProcessor, AutoModelForVision2Seq
 from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer
 #from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
 from transformers.generation import GenerationConfig
-from openai import OpenAI
+#from openai import OpenAI
 from pptx import Presentation
 from pptx.util import Cm
 from pptx.oxml.ns import _nsmap
@@ -183,6 +183,13 @@ def process_images_from_pptx(file_path: str, settings: dict, debug: bool = False
             if settings["add_to_notes"] and (pptx["slide_image_cnt"] > 0 or (pptx["object_list"] is not None)):
                 # only add presenter note if there is at least one image or object on the slide
                 err = add_presenter_note(file_path, pptx, settings)
+            elif settings["add_to_notes_all_slides"]:
+                # add description of slide to notes
+                err = add_presenter_note(file_path, pptx, settings)
+            else:
+                # remove current presenter note
+                slide = pptx["current_slide"]
+                slide.notes_slide.notes_text_frame.text = ""
 
             # if err break out slide loop
             if err:
@@ -226,7 +233,7 @@ def init_model(settings: dict) -> bool:
 
     if settings["use_ollama"]:
         print(f"Ollama server: {settings['ollama_url']}")
-        
+
         # check if Ollama model is available on the server
         err, full_model_name = check_ollama_model_available(settings)
 
@@ -306,26 +313,52 @@ def init_model(settings: dict) -> bool:
 
         settings["qwen-vl-model"] = model
         settings["qwen-vl-tokenizer"] = tokenizer
-    elif model_str == "cogvlm":
-        model_name = "THUDM/cogvlm-chat-hf"
+    elif model_str == "cogvlm" or model_str == "cogvlm2":
+        if model_str == "cogvlm":
+            model_name = "THUDM/cogvlm-chat-hf"
+        elif model_str == "cogvlm2":
+            model_name = "THUDM/cogvlm2-llama3-chat-19B"
         print(f"CogVLM model: '{model_name}'")
         print(f"prompt: '{prompt}'")
 
         if settings["cuda_available"]:
             print("Using CUDA.")
 
-        tokenizer = LlamaTokenizer.from_pretrained('lmsys/vicuna-7b-v1.5')
-        if settings["cuda_available"]:
-            model = AutoModelForCausalLM.from_pretrained(
+        if model_str == "cogvlm":
+            tokenizer = LlamaTokenizer.from_pretrained('lmsys/vicuna-7b-v1.5')
+        elif model_str == "cogvlm2":
+            tokenizer = AutoTokenizer.from_pretrained(
                 model_name,
-                load_in_4bit=True,
-                #torch_dtype=torch.bfloat16,
-                low_cpu_mem_usage=True,
                 trust_remote_code=True
-            ).to('cuda').eval()
+            )
+
+        torch_type = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8 else torch.float16
+        if settings["cuda_available"]:
+            if model_str == "cogvlm":
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    load_in_4bit=True,
+                    #torch_dtype=torch.bfloat16,
+                    low_cpu_mem_usage=True,
+                    trust_remote_code=True
+                ).to('cuda').eval()
+            elif model_str == "cogvlm2":
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    torch_dtype=torch_type,
+                    trust_remote_code=True,
+                ).to('cuda').eval()
         else:
-            print("CogVLM requires a GPU with CUDA support.")
-            err = True
+            if model_str == "cogvlm":
+                print("CogVLM requires a GPU with CUDA support.")
+                err = True
+            elif model_str == "cogvlm2":
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    torch_dtype=torch_type,
+                    trust_remote_code=True,
+                ).to('cpu').eval()
+
             # if settings['mps_available']:
             #     os.environ["ACCELERATE_USE_MPS_DEVICE"] = "True"
             #     print("Activating mps device for accelerate.")
@@ -546,35 +579,35 @@ def get_current_group_shape(pptx:dict) -> BaseShape:
 
     return None
 
-def shape_type2str(type) -> str:
+def shape_type2str(shape_type) -> str:
     """ return name of shape as string """
     s:str = ""
 
-    if type == MSO_SHAPE_TYPE.AUTO_SHAPE:
+    if shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:
         s =  "Auto shape"
-    elif type == MSO_SHAPE_TYPE.LINE:
+    elif shape_type == MSO_SHAPE_TYPE.LINE:
         s =  "Line"
-    elif type == MSO_SHAPE_TYPE.IGX_GRAPHIC:
+    elif shape_type == MSO_SHAPE_TYPE.IGX_GRAPHIC:
         s =  "IgxGraphic"
-    elif type == MSO_SHAPE_TYPE.CHART:
+    elif shape_type == MSO_SHAPE_TYPE.CHART:
         s = "Chart"
-    elif type == MSO_SHAPE_TYPE.FREEFORM:
+    elif shape_type == MSO_SHAPE_TYPE.FREEFORM:
         s = "FreeForm"
-    elif type == MSO_SHAPE_TYPE.TEXT_BOX:
+    elif shape_type == MSO_SHAPE_TYPE.TEXT_BOX:
         s = "TextBox"
-    elif type == MSO_SHAPE_TYPE.CANVAS:
+    elif shape_type == MSO_SHAPE_TYPE.CANVAS:
         s = "Canvas"
-    elif type == MSO_SHAPE_TYPE.MEDIA:
+    elif shape_type == MSO_SHAPE_TYPE.MEDIA:
         s = "Media"
-    elif type == MSO_SHAPE_TYPE.WEB_VIDEO:
+    elif shape_type == MSO_SHAPE_TYPE.WEB_VIDEO:
         s = "WebVideo"
-    elif type == MSO_SHAPE_TYPE.DIAGRAM:
+    elif shape_type == MSO_SHAPE_TYPE.DIAGRAM:
         s = "Diagram"
-    elif type == MSO_SHAPE_TYPE.OLE_CONTROL_OBJECT:
+    elif shape_type == MSO_SHAPE_TYPE.OLE_CONTROL_OBJECT:
         s = "Control object"
-    elif type == MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT:
+    elif shape_type == MSO_SHAPE_TYPE.EMBEDDED_OLE_OBJECT:
         s = "Embedded object"
-    elif type == MSO_SHAPE_TYPE.WEB_VIDEO:
+    elif shape_type == MSO_SHAPE_TYPE.WEB_VIDEO:
         s = "Web video"
 
     return s
@@ -853,7 +886,7 @@ def generate_description(image_file_path: str, extension:str, settings: dict, fo
             alt_text, err = openclip(image_file_path, settings, for_notes, debug)
         elif model_str == "qwen-vl":
             alt_text, err = qwen_vl(image_file_path, settings, for_notes, debug)
-        elif model_str == "cogvlm":
+        elif model_str == "cogvlm" or model_str == "cogvlm2":
             alt_text, err = cog_vlm(image_file_path, settings, for_notes, debug)
         elif model_str == "gpt-4o" or model_str == "gpt-4-turbo":
             alt_text, err = use_openai(image_file_path, extension, settings, for_notes, debug)
@@ -1082,7 +1115,7 @@ def qwen_vl(image_file_path: str, settings: dict, for_notes:bool=False, debug:bo
     return alt_text, err
 
 def cog_vlm(image_file_path: str, settings: dict, for_notes:bool=False, debug:bool=False) -> Tuple[str, bool]:
-    """ get image description from CogVLM """
+    """ get image description from CogVLM1 / CogVLM2 """
     err:bool = False
 
     # check if readonly
@@ -1263,7 +1296,7 @@ def check_ollama_model_available(settings:dict) -> bool:
     try:
         response = requests.get(ollama_url, timeout=10)
         response.raise_for_status()
-        
+
     except requests.exceptions.ConnectionError:
         print(f"ConnectionError: Unable to access the server at: '{ollama_url}'")
         err = True
@@ -1280,7 +1313,7 @@ def check_ollama_model_available(settings:dict) -> bool:
             if model_specified == m['name']:
                 err = False
             all_models.append(m['name'])
-        
+
         if err:
             print("Models available on the Ollama server:")
             for m in all_models:
@@ -1394,7 +1427,8 @@ def accessibility_report(out_file_name: str, pptx_file_name: str, debug:bool = F
             if len(row) == 10 and len(row[8]) > 0 and not str2bool(row[7]):
                 # not decorative
                 if len(row[6]) == 0:
-                    if debug: print(row)
+                    if debug:
+                        print(row)
                     empty_alt_txt += 1
                 if row[4] == "Picture":
                     img_cnt += 1
@@ -1626,8 +1660,8 @@ def export_presenter_notes(pptx_path:str) -> bool:
     err:bool = False
 
     # get name and folder from Powerpoint file
-    pptx_name:str = pathlib.Path(pptx_path).stem
-    dirname:str = os.path.dirname(pptx_path)
+    pptx_name = pathlib.Path(pptx_path).stem
+    dirname = os.path.dirname(pptx_path)
 
     # output file
     notes_file_path = os.path.join(dirname, f"{pptx_name}_notes.txt")
@@ -1642,8 +1676,8 @@ def export_presenter_notes(pptx_path:str) -> bool:
                 title = slide.shapes.title.text
             else:
                 title = ""
-            str = f"=== Slide {slide_cnt} - {title} ===\n\n{slide.notes_slide.notes_text_frame.text}\n\n"
-            out_file.write(str)
+            s = f"=== Slide {slide_cnt} - {title} ===\n\n{slide.notes_slide.notes_text_frame.text}\n\n"
+            out_file.write(s)
 
     if not err:
         print(f"Exported presenter notes to file: '{notes_file_path}'")
@@ -1689,7 +1723,7 @@ def export_slides_to_images(pptx_path:str) -> bool:
             presentation.Close()
             powerpoint.Quit()
             print(f"Slides saved as PNG images in folder: '{abs_path_to_folder_to_save}'")
-        except Exception as e:
+        except ImportError as e:
             print(f"Unable to export slides: {str(e)}")
             err = True
 
@@ -1824,7 +1858,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description='Add alt-text automatically to images and objects in Powerpoint')
     parser.add_argument("file", type=str, help="Powerpoint file")
     parser.add_argument("--report", action='store_true', default=False, help="flag to generate alt text report")
-    parser.add_argument("--model", type=str, default="", help="kosmos-2, openclip, llava, gpt-4o, gpt-4-turbo")
+    parser.add_argument("--model", type=str, default="", help="kosmos-2, openclip, llava, gpt-4o, gpt-4-turbo, cogvlm, cogvlm2")
 
     # Ollama
     parser.add_argument("--use_ollama", action='store_true', default=False, help="use Ollama server")
@@ -1847,7 +1881,8 @@ def main() -> int:
     parser.add_argument("--export_presenter_notes", action='store_true', default=False, help="export presenter notes")
     parser.add_argument("--export_slides", action='store_true', default=False, help="export pptx slides to png images")
     #
-    parser.add_argument("--add_to_notes", action='store_true', default=False, help="add image descriptions to slide notes")
+    parser.add_argument("--add_to_notes", action='store_true', default=False, help="add slide description to slide notes when images are present")
+    parser.add_argument("--add_to_notes_all_slides", action='store_true', default=False, help="add description to each slide notes")
     #
     parser.add_argument("--debug", action='store_true', default=False, help="flag for debugging")
 
@@ -1866,26 +1901,30 @@ def main() -> int:
     # set default prompt
     if model_str == "gpt-4-turbo" or model_str == "gpt-4o":
         if args.prompt == "":
-            prompt = "Describe the image using one or two sentences. Do not mention the word 'image'."
+            prompt = "Create a caption. Your response should be one or two sentences."
+            #prompt = "Describe the image using one or two sentences. Do not mention the word 'image'."
     elif model_str == "kosmos-2":
         if args.prompt == "":
             prompt = "<grounding>An image of"
             #prompt = "<grounding>Describe this image:"
     elif model_str == "qwen-vl":
         if args.prompt == "":
-            prompt = "Describe the image using one or two sentences."
-    elif model_str == "cogvlm":
+            prompt = "Create a caption. Your response should be one or two sentences."
+            #prompt = "Describe the image using one or two sentences."
+    elif model_str == "cogvlm" or model_str == "cogvlm2":
         if args.prompt == "":
-            prompt = "Describe the image using one or two sentences."
+            prompt = "Create a caption. Your response should be one or two sentences."
+            #prompt = "Describe the image using one or two sentences."
     elif args.use_ollama:
         if args.prompt == "":
-            prompt = "You are an expert at understanding images and graphs. Answer concisely for someone who is visually impaired. Describe what you see. Your response should be one or two sentences."
+            prompt = "Create a caption. Your response should be one or two sentences."
+            #prompt = "You are an expert at understanding images and graphs. Answer concisely for someone who is visually impaired. Create a caption. Your response should be one or two sentences."
     else:
         if args.prompt == "":
-            prompt = "Describe image. Your response should be one or two sentences."
+            prompt = "Create a caption. Your response should be one or two sentences."
 
     if args.prompt_notes == "":
-        prompt_presenter_notes = "Describe the image in a few sentences for someone who is visually impaired. Start the desciption with 'This slide'"
+        prompt_presenter_notes = "Describe the image in a very short paragraph without using bullet points or newlines for someone who is visually impaired. Start the desciption with 'This slide'"
     else:
         prompt_presenter_notes = args.prompt_notes
 
@@ -1915,7 +1954,8 @@ def main() -> int:
             "prompt": prompt,
             "prompt_notes": prompt_presenter_notes,
             "img_size": int(args.resize),
-            "add_to_notes": args.add_to_notes
+            "add_to_notes": args.add_to_notes,
+            "add_to_notes_all_slides": args.add_to_notes_all_slides
         }
 
         if args.replace != "":
@@ -1928,7 +1968,7 @@ def main() -> int:
         elif args.export_slides:
             err = export_slides_to_images(powerpoint_file_name)
         else:
-            if args.add_to_notes:
+            if args.add_to_notes or args.add_to_notes_all_slides:
                 print(f"Model: {model_str}")
                 print(f"Presenter notes prompt: '{prompt_presenter_notes}'")
                 # export slides to images so that model can interpret the whole slide

@@ -9,3 +9,5 @@ comtypes; platform_system == "Windows"
 psutil
 ollama
 accelerate
+pytictoc
+flash_attn; platform_system != "Darwin"

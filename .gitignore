@@ -5,3 +5,6 @@ llama.cpp/*
 llava/*
 *.log
 *.ttf
+.pylintrc
+__pycache__/*
+auto_alt_text/__pycache__/*

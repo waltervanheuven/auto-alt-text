@@ -10,7 +10,7 @@ The script currently supports the following models:
 - [OpenCLIP](https://github.com/mlfoundations/open_clip) models
 - [GPT-4o](https://openai.com/index/hello-gpt-4o/) and [GPT-4 Turbo](https://openai.com/index/gpt-4/)
 - [LLaVA](https://llava-vl.github.io) and other Multimodal models through [Ollama](https://ollama.com)
-- LLaVA and other Multimodel models through [MLX-VLM](https://github.com/Blaizzy/mlx-vlm)
+- [LLaVA](https://llava-vl.github.io) and other Multimodel models through [MLX-VLM](https://github.com/Blaizzy/mlx-vlm)
 
 All models, except OpenAI's models (e.g., GPT-4o), run locally. OpenAI's models requires API access. By default, images are resized so that width and height are maximum 500 pixels before inference. The [Qwen-VL](https://github.com/QwenLM/Qwen-VL) model requires an NVIDIA RTX A4000 (or better), or an M1-Max or better. For inference hardware requirements of Cog-VLM, check the [github page](https://github.com/THUDM/CogVLM).
 
@@ -66,7 +66,7 @@ scoop install main/imagemagick
 scoop install main/qpdf
 ```
 
-### Additional libs for Qwen-VL and CogVLM models
+### Additional packages for Qwen-VL and CogVLM models
 
 ```sh
 # Qwen-VL
@@ -147,7 +147,7 @@ python auto_alt_text pptx/test1.pptx --model gpt-4o
 python auto_alt_text pptx/test1.pptx --model gpt-4o --prompt "Provide an image caption"
 ```
 
-## LLaVA and other Multimodal LLMs
+## Multimodal LLMs through Ollama
 
 LLaVA and other multimodal large language models (e.g. llava-llama3, llava-phi3) can be used through [Ollama](https://ollama.com/). 
 These models will run locally or on a remote ollama server. Which model you can use locally depends on the capabilities of your computer (e.g. memory, GPU).

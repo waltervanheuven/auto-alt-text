@@ -9,8 +9,8 @@ The script currently supports the following models:
 - [Kosmos-2](https://github.com/microsoft/unilm/tree/master/kosmos-2)
 - [OpenCLIP](https://github.com/mlfoundations/open_clip) models
 - [GPT-4o](https://openai.com/index/hello-gpt-4o/) and [GPT-4 Turbo](https://openai.com/index/gpt-4/)
-- [LLaVA](https://llava-vl.github.io) and other Multimodal models through [Ollama](https://ollama.com)
-- [LLaVA](https://llava-vl.github.io) and other Multimodel models through [MLX-VLM](https://github.com/Blaizzy/mlx-vlm)
+- [LLaVA](https://llava-vl.github.io) and other Multimodal LLM models through [Ollama](https://ollama.com)
+- [LLaVA](https://llava-vl.github.io) and other Vision LLM models through [MLX-VLM](https://github.com/Blaizzy/mlx-vlm)
 
 All models, except OpenAI's models (e.g., GPT-4o), run locally. OpenAI's models requires API access. By default, images are resized so that width and height are maximum 500 pixels before inference. The [Qwen-VL](https://github.com/QwenLM/Qwen-VL) model requires an NVIDIA RTX A4000 (or better), or an M1-Max or better. For inference hardware requirements of Cog-VLM, check the [github page](https://github.com/THUDM/CogVLM).
 

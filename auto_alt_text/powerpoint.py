@@ -2,20 +2,21 @@
 
 from typing import Tuple
 import os
+import sys
 import io
 import platform
 import pathlib
 import shutil
 import subprocess
 from PIL import Image
-from pptx import Presentation
 from pptx.util import Cm
 from pptx.oxml.ns import _nsmap
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.shapes.base import BaseShape
-from utils import num2str, str2bool, bool2str
-from models import kosmos2, openclip, qwen_vl, cog_vlm, phi3_vision
-from models import use_ollama, use_openai, use_mlx_vlm
+from pptx import Presentation
+from .utils import num2str, str2bool, bool2str
+from .models import kosmos2, openclip, qwen_vl, cog_vlm, phi3_vision
+from .models import use_ollama, use_openai, use_mlx_vlm
 
 # see https://github.com/scanny/python-pptx/pull/512
 def get_alt_text(shape: BaseShape) -> str:
@@ -38,7 +39,13 @@ def is_decorative(shape) -> bool:
     adec_decoratives = cNvPr.xpath(".//adec:decorative[@val='1']")
     return bool(adec_decoratives)
 
-def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> bool:
+def process_shape(
+        shape: BaseShape,
+        pptx: dict,
+        settings: dict,
+        verbose: bool = False,
+        debug: bool = False
+    ) -> bool:
     """
     Recursive function to process shapes and shapes in groups on each slide
     """
@@ -136,10 +143,11 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
             decorative:bool = is_decorative(group_shape)
             stored_alt_text:str = get_alt_text(group_shape)
 
-            if decorative:
-                print(f"Slide: {slide_cnt + 1}, Group: {group_shape.name}, alt_text: '{stored_alt_text}', decorative")
-            else:
-                print(f"Slide: {slide_cnt + 1}, Group: {group_shape.name}, alt_text: '{stored_alt_text}'")
+            if verbose:
+                if decorative:
+                    print(f"Slide: {slide_cnt + 1}, Group: {group_shape.name}, alt_text: '{stored_alt_text}', decorative")
+                else:
+                    print(f"Slide: {slide_cnt + 1}, Group: {group_shape.name}, alt_text: '{stored_alt_text}'")
 
             fout = pptx["fout"]
             fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{group_shape.name}\tGroup\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}\n")
@@ -169,10 +177,11 @@ def process_shape(shape: BaseShape, pptx: dict, settings: dict, debug: bool) -> 
                 slide_image_cnt:int = pptx["slide_image_cnt"]
 
                 stored_alt_text = get_alt_text(shape)
-                if decorative:
-                    print(f"Slide: {slide_cnt + 1}, Pict: {slide_image_cnt + 1}, alt_text: '{stored_alt_text}', decorative")
-                else:
-                    print(f"Slide: {slide_cnt + 1}, Pict: {slide_image_cnt + 1}, alt_text: '{stored_alt_text}'")
+                if verbose:
+                    if decorative:
+                        print(f"Slide: {slide_cnt + 1}, Pict: {slide_image_cnt + 1}, alt_text: '{stored_alt_text}', decorative")
+                    else:
+                        print(f"Slide: {slide_cnt + 1}, Pict: {slide_image_cnt + 1}, alt_text: '{stored_alt_text}'")
 
                 model_str:str = settings["model"]
                 pptx_name:str = pptx["pptx_name"]
@@ -258,10 +267,12 @@ def shape_type2str(shape_type) -> str:
 
     return s
 
-def process_object(shape:BaseShape,
-                   pptx:dict,
-                   settings:dict,
-                   debug:bool = False
+def process_object(
+        shape: BaseShape,
+        pptx: dict,
+        settings: dict,
+        verbose: bool = False,
+        debug:bool = False
     ) -> None:
     """ process """
     # only include if it is not part of a group
@@ -382,10 +393,11 @@ def process_object(shape:BaseShape,
     slide_image_cnt:int = pptx["slide_image_cnt"]
 
     stored_alt_text = get_alt_text(shape)
-    if decorative:
-        print(f"Slide: {slide_cnt + 1}, {shape_type2str(shape.shape_type)}: {slide_image_cnt + 1}, alt_text: '{stored_alt_text}', decorative")
-    else:
-        print(f"Slide: {slide_cnt + 1}, {shape_type2str(shape.shape_type)}: {slide_image_cnt + 1}, alt_text: '{stored_alt_text}'")
+    if verbose:
+        if decorative:
+            print(f"Slide: {slide_cnt + 1}, {shape_type2str(shape.shape_type)}: {slide_image_cnt + 1}, alt_text: '{stored_alt_text}', decorative")
+        else:
+            print(f"Slide: {slide_cnt + 1}, {shape_type2str(shape.shape_type)}: {slide_image_cnt + 1}, alt_text: '{stored_alt_text}'")
 
     model_str:str = settings["model"]
     pptx_name:str = pptx["pptx_name"]
@@ -418,7 +430,11 @@ def cleanup_name_object(txt:str) -> str:
 
     return s
 
-def combine_images_in_group(images, group_shape) -> Image:
+def combine_images_in_group(
+        images, 
+        group_shape,
+        verbose: bool = False
+    ) -> Image:
     """ 
     Create new image based on shape
 
@@ -435,15 +451,18 @@ def combine_images_in_group(images, group_shape) -> Image:
 
     # Paste each image into the new image at its relative position
     for image, left, top, _ in images:
-        print(f"img: {image.width}, {image.height}, {left}, {top}")
+        if verbose:
+            print(f"img: {image.width}, {image.height}, {left}, {top}")
         new_img.paste(image, (int(left / emu_per_pixel), int(top / emu_per_pixel)))
 
     return new_img
 
-def process_shape_and_generate_alt_text(shape:BaseShape,
-                                        pptx:dict,
-                                        settings:dict,
-                                        debug:bool=False
+def process_shape_and_generate_alt_text(
+        shape: BaseShape,
+        pptx: dict,
+        settings: dict,
+        verbose: bool = False,
+        debug:bool=False
     ) -> Tuple[bool, str]:
     """ 
     Save image associated with shape and generate alt text
@@ -469,7 +488,7 @@ def process_shape_and_generate_alt_text(shape:BaseShape,
             extension = image_part.partname.ext
         except AttributeError:
             slide_cnt:int = pptx["slide_cnt"] + 1
-            print(f"Error, slide: {slide_cnt}, pict: '{shape.name}', unable to access image")
+            print(f"Error, slide: {slide_cnt}, pict: '{shape.name}', unable to access image", file=sys.stderr)
             #err = True
 
     if not err and image_stream is not None:
@@ -488,13 +507,14 @@ def process_shape_and_generate_alt_text(shape:BaseShape,
         if not report:
             image_file_name:str = f"s{num2str(pptx_nslides, slide_cnt + 1)}p{num2str(99, slide_image_cnt + 1)}"
             image_file_path = os.path.join(img_folder, f"{image_file_name}.{extension}")
-            print(f"Saving image from pptx: '{image_file_path}'")
+            if verbose:
+                print(f"Saving image from pptx: '{image_file_path}'")
 
             # save image
             with open(image_file_path, "wb") as f:
                 f.write(image_stream)
 
-            alt_text, err = generate_description(image_file_path, extension, settings)
+            alt_text, err = generate_description(image_file_path, extension, settings, verbose=verbose)
         else:
             alt_text = get_alt_text(shape)
 
@@ -520,12 +540,14 @@ def process_shape_and_generate_alt_text(shape:BaseShape,
 
     return err, image_file_path
 
-def process_shapes_from_file(shape: BaseShape,
-                             group_shape_list: list[BaseShape],
-                             csv_rows, slide_cnt:int,
-                             slide_object_cnt:int,
-                             object_cnt: int,
-                             debug:bool
+def process_shapes_from_file(
+        shape: BaseShape,
+        group_shape_list: list[BaseShape],
+        csv_rows, slide_cnt: int,
+        slide_object_cnt: int,
+        object_cnt: int,
+        verbose: bool = False,
+        debug: bool = False
     ) -> Tuple[list[BaseShape], int, int]:
     """ recursive function to process shapes and shapes within groups """
     # Check if the shape has a picture
@@ -536,7 +558,7 @@ def process_shapes_from_file(shape: BaseShape,
             group_shape_list.append(shape)
 
         for embedded_shape in shape.shapes:
-            group_shape_list, object_cnt, slide_object_cnt = process_shapes_from_file(embedded_shape, group_shape_list, csv_rows, slide_cnt, slide_object_cnt, object_cnt, debug)
+            group_shape_list, object_cnt, slide_object_cnt = process_shapes_from_file(embedded_shape, group_shape_list, csv_rows, slide_cnt, slide_object_cnt, object_cnt, verbose, debug)
 
         # current group shape (last one)
         group_shape = group_shape_list[-1]
@@ -548,7 +570,7 @@ def process_shapes_from_file(shape: BaseShape,
         # change decorative status
         if decorative_pptx != decorative:
             # set decorative status of image
-            print(f"Side: {slide_cnt}, {group_shape.name}, can't set the docorative status to: {bool2str(decorative)}")
+            print(f"Side: {slide_cnt}, {group_shape.name}, can't set the docorative status to: {bool2str(decorative)}", file=sys.stderr)
 
         alt_text: str = ""
         if not decorative:
@@ -571,12 +593,12 @@ def process_shapes_from_file(shape: BaseShape,
 
         # get decorative
         decorative_pptx:bool = is_decorative(shape)
-        decorative:bool = utils.str2bool(csv_rows[object_cnt][8])
+        decorative:bool = str2bool(csv_rows[object_cnt][8])
 
         # change decorative status
         if decorative_pptx != decorative:
             # set decorative status of image
-            print(f"Side: {slide_cnt}, {shape.name}, can't set the docorative status to: {bool2str(decorative)}")
+            print(f"Side: {slide_cnt}, {shape.name}, can't set the docorative status to: {bool2str(decorative)}", file=sys.stderr)
 
         alt_text: str = ""
         if not decorative:
@@ -603,7 +625,7 @@ def process_shapes_from_file(shape: BaseShape,
         # change decorative status
         if decorative_pptx != decorative:
             # set decorative status of image
-            print(f"Side: {slide_cnt}, {shape.name}, can't set the docorative status to: {bool2str(decorative)}")
+            print(f"Side: {slide_cnt}, {shape.name}, can't set the docorative status to: {bool2str(decorative)}", file=sys.stderr)
 
         alt_text: str = ""
         if not decorative:
@@ -624,7 +646,7 @@ def process_shapes_from_file(shape: BaseShape,
         # change decorative status
         if decorative_pptx != decorative:
             # set decorative status of image
-            print(f"Side: {slide_cnt}, {shape.name}, can't set the docorative status to: {bool2str(decorative)}")
+            print(f"Side: {slide_cnt}, {shape.name}, can't set the docorative status to: {bool2str(decorative)}", file=sys.stderr)
 
         alt_text: str = ""
         if not decorative:
@@ -636,7 +658,12 @@ def process_shapes_from_file(shape: BaseShape,
 
     return group_shape_list, object_cnt, slide_object_cnt
 
-def add_presenter_note(pptx_path:str, pptx:dict, settings:dict) -> bool:
+def add_presenter_note(
+        pptx_path: str,
+        pptx: dict,
+        settings: dict,
+        verbose: bool = False
+    ) -> bool:
     """ add presenter note to each slide """
     err:bool = False
 
@@ -646,22 +673,27 @@ def add_presenter_note(pptx_path:str, pptx:dict, settings:dict) -> bool:
 
     slide_dir:str = os.path.join(dirname, pptx_name, "slides_png")
     current_slide:int = pptx["slide_cnt"]
-    t = num2str(pptx['pptx_nslides'], current_slide + 1)
+    #t = num2str(pptx['pptx_nslides'], current_slide + 1)
+    t = str(current_slide + 1)
     file_name:str = f"{pptx_name}-{t}.png"
     slide_image_file_path = os.path.join(slide_dir, file_name)
 
     if os.path.isfile(slide_image_file_path):
-        alt_text, err = generate_description(slide_image_file_path, ".png", settings, for_notes=True)
+        alt_text, err = generate_description(slide_image_file_path, ".png", settings, for_notes=True, verbose=verbose)
         slide = pptx["current_slide"]
         slide.notes_slide.notes_text_frame.text = alt_text
-        print(f"Slide: {current_slide + 1}\t{alt_text}")
+        if verbose:
+            print(f"Slide: {current_slide + 1}\t{alt_text}")
     else:
-        print(f"Unable to access image file: {slide_image_file_path}")
+        print(f"Unable to access image file: {slide_image_file_path}", file=sys.stderr)
         err = True
 
     return err
 
-def remove_presenter_notes(pptx_path:str) -> bool:
+def remove_presenter_notes(
+        pptx_path:str,
+        verbose:bool = False
+    ) -> bool:
     """ remove all presenter notes """
     err:bool = False
 
@@ -680,11 +712,15 @@ def remove_presenter_notes(pptx_path:str) -> bool:
 
     new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_notes_removed{pptx_extension}")
     prs.save(new_pptx_file_name)
-    print(f"Saved Powerpoint file with presenter notes removed to: '{new_pptx_file_name}'\n")
+    if verbose:
+        print(f"Saved Powerpoint file with presenter notes removed to: '{new_pptx_file_name}'\n")
 
     return err
 
-def export_presenter_notes(pptx_path:str) -> bool:
+def export_presenter_notes(
+        pptx_path: str,
+        verbose: bool = False
+    ) -> bool:
     """ export presenter notes """
     err:bool = False
 
@@ -696,7 +732,8 @@ def export_presenter_notes(pptx_path:str) -> bool:
     notes_file_path = os.path.join(dirname, f"{pptx_name}_notes.txt")
 
     with open(notes_file_path, "w", encoding="utf-8") as out_file:
-        print(f"Processing Powerpoint file: {pptx_path}")
+        if verbose:
+            print(f"Processing Powerpoint file: {pptx_path}")
         prs = Presentation(pptx_path)
 
         # Loop through slides
@@ -708,12 +745,15 @@ def export_presenter_notes(pptx_path:str) -> bool:
             s = f"=== Slide {slide_cnt} - {title} ===\n\n{slide.notes_slide.notes_text_frame.text}\n\n"
             out_file.write(s)
 
-    if not err:
+    if not err and verbose:
         print(f"Exported presenter notes to file: '{notes_file_path}'")
 
     return err
 
-def export_slides_to_images(pptx_path:str) -> bool:
+def export_slides_to_images(
+        pptx_path: str,
+        verbose: bool = False
+    ) -> bool:
     """ export slides to PNG, Windows ONLY and requires that Powerpoint is installed """
 
     err:bool = False
@@ -751,24 +791,27 @@ def export_slides_to_images(pptx_path:str) -> bool:
 
             presentation.Close()
             powerpoint.Quit()
-            print(f"Slides saved as PNG images in folder: '{abs_path_to_folder_to_save}'")
+            if verbose:
+                print(f"Slides saved as PNG images in folder: '{abs_path_to_folder_to_save}'")
         except ImportError as e:
-            print(f"Unable to export slides: {str(e)}")
+            print(f"Unable to export slides: {str(e)}", file=sys.stderr)
             err = True
 
     elif platform.system() != "Windows":
         # export PPTX first to PDF
-        print("Exporting to PDF...")
+        #print("Exporting to PDF...")
 
         cmd:list[str] = ["soffice", "--headless", "--convert-to", "pdf", pptx_path, "--outdir", path_to_folder_to_save]
         path_to_cmd = shutil.which(cmd[0])
         if path_to_cmd is not None:
             r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
         else:
-            print("Warning, LibreOffice not installed.")
+            print("Warning, LibreOffice not installed.", file=sys.stderr)
 
         # save each page as a separate file
-        print("Extracting pages from PDF...")
+        if verbose:
+            print("Extracting pages from PDF...")
+
         pdf_file:str = os.path.join(path_to_folder_to_save, f"{pptx_name}.pdf")
         out_file_name:str = os.path.join(path_to_folder_to_save, f"{pptx_name}.pdf")
 
@@ -777,10 +820,11 @@ def export_slides_to_images(pptx_path:str) -> bool:
         if path_to_cmd is not None:
             r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
         else:
-            print("Warning, qpdf not installed.")
+            print("Warning, qpdf not installed.", file=sys.stderr)
 
         # export from PDF to PNG
-        print("Converting each page to PNG...")
+        if verbose:
+            print("Converting each page to PNG...")
         if platform.system() == "Darwin":
             the_files = os.listdir(path_to_folder_to_save)
             for f in the_files:
@@ -792,7 +836,7 @@ def export_slides_to_images(pptx_path:str) -> bool:
                     if path_to_cmd is not None:
                         r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True) #capture_output = True)
                     else:
-                        print("Unable to find 'sips'")
+                        print("Unable to find 'sips'", file=sys.stderr)
         else:
             # Linux
             the_files = os.listdir(path_to_folder_to_save)
@@ -806,7 +850,7 @@ def export_slides_to_images(pptx_path:str) -> bool:
                     if path_to_cmd is not None:
                         r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True) #capture_output = True)
                     else:
-                        print("Unable to find 'convert'")
+                        print("Unable to find 'convert'", file=sys.stderr)
         # remove PDFs
         for f in the_files:
             if not f.startswith(".") and f.startswith(f"{pptx_name}-"):
@@ -817,11 +861,11 @@ def export_slides_to_images(pptx_path:str) -> bool:
 
         # remove exported PDF file
         #os.remove(pdf_file)
-
-        print(f"Slides saved as PNG images in folder: '{path_to_folder_to_save}'")
+        if verbose:
+            print(f"Slides saved as PNG images in folder: '{path_to_folder_to_save}'")
     else:
         err = True
-        print("Unable to convert PPTX to images.")
+        print("Unable to convert PPTX to images.", file = sys.stderr)
 
     #if not err:
     #    # generate pptx from slide images
@@ -829,7 +873,12 @@ def export_slides_to_images(pptx_path:str) -> bool:
 
     return err
 
-def images_to_pptx(images_path:str, output_file:str="presentation.pptx", debug:bool=False) -> None:
+def images_to_pptx(
+        images_path: str,
+        output_file: str = "presentation.pptx",
+        verbose: bool = False,
+        debug: bool=False
+    ) -> None:
     """
     Create a PowerPoint presentation with an image on each slide
     """
@@ -877,42 +926,46 @@ def images_to_pptx(images_path:str, output_file:str="presentation.pptx", debug:b
     out = os.path.join(images_path, output_file)
     prs.save(out)
 
-    print(f"Saved pptx to '{out}'.")
+    if verbose:
+        print(f"Saved pptx to '{out}'.")
 
-def generate_description(image_file_path: str,
-                         extension:str, settings: dict,
-                         for_notes:bool=False,
-                         debug:bool=False
+def generate_description(
+        image_file_path: str,
+        extension: str, settings: dict,
+        for_notes: bool = False,
+        verbose: bool = False,
+        debug: bool = False
     ) -> Tuple[str, bool]:
     """ generate image text description using MLLM/VL model """
     err:bool = False
     alt_text:str = ""
     model_str:str = settings["model"]
 
-    if for_notes:
-        print("Generating presenter notes...")
-    else:
-        print("Generating alt text...")
+    if verbose:
+        if for_notes:
+            print("Generating presenter notes...")
+        else:
+            print("Generating alt text...")
 
     if settings["use_ollama"]:
-        alt_text, err = use_ollama(image_file_path, settings, for_notes, debug)
+        alt_text, err = use_ollama(image_file_path, settings, for_notes, verbose, debug)
     elif settings["use_mlx_vlm"]:
-        alt_text, err = use_mlx_vlm(image_file_path, settings, for_notes, debug)
+        alt_text, err = use_mlx_vlm(image_file_path, settings, for_notes, verbose, debug)
     else:
         if model_str == "kosmos-2":
-            alt_text, err = kosmos2(image_file_path, settings, for_notes, debug)
+            alt_text, err = kosmos2(image_file_path, settings, for_notes, verbose)
         elif model_str == "openclip":
-            alt_text, err = openclip(image_file_path, settings)
+            alt_text, err = openclip(image_file_path, settings, verbose)
         elif model_str == "qwen-vl":
-            alt_text, err = qwen_vl(image_file_path, settings, for_notes, debug)
+            alt_text, err = qwen_vl(image_file_path, settings, for_notes, verbose)
         elif model_str == "cogvlm" or model_str == "cogvlm2":
-            alt_text, err = cog_vlm(image_file_path, settings, for_notes, debug)
+            alt_text, err = cog_vlm(image_file_path, settings, for_notes, verbose)
         elif model_str == "phi3-vision":
-            alt_text, err = phi3_vision(image_file_path, settings, for_notes, debug)
+            alt_text, err = phi3_vision(image_file_path, settings, for_notes, verbose)
         elif model_str == "gpt-4o" or model_str == "gpt-4-turbo":
-            alt_text, err = use_openai(image_file_path, extension, settings, for_notes, debug)
+            alt_text, err = use_openai(image_file_path, extension, settings, for_notes, verbose, debug)
         else:
-            print(f"Unknown model: {model_str}")
+            print(f"Unknown model: {model_str}", file = sys.stderr)
 
     # remove space at the end
     alt_text = alt_text.rstrip()

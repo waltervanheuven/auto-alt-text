@@ -87,7 +87,7 @@ pip install xformers accelerate bitsandbytes
 Show current alt text of objects (e.g. images, shapes, group shapes) in a Powerpoint file and generate an alt text accessibility report. A tab-delimited text file is created with the alt text of each object in the Powerpoint file.
 
 ```sh
-python auto_alt_text pptx/test1.pptx --report
+python -m auto_alt_text pptx/test1.pptx --report
 # output is written to `pptx/test1.txt`
 ```
 
@@ -100,11 +100,11 @@ Example command for using [Kosmos-2](https://github.com/microsoft/unilm/tree/mas
 #
 # Note that all images in the powerpoint files are saved separately in a folder
 # Powerpoint file with the alt texts will be saved to '<filename>_<model_name>.pptx'
-python auto_alt_text pptx/test1.pptx --model kosmos-2
+python -m auto_alt_text pptx/test1.pptx --model kosmos-2
 
 # custom prompt to get brief image descriptions
 # for Kosmos-2 start prompt with <grounding>
-python auto_alt_text pptx/test1.pptx --model kosmos-2 --prompt "<grounding>An image of"
+python -m auto_alt_text pptx/test1.pptx --model kosmos-2 --prompt "<grounding>An image of"
 ```
 
 ## Qwen-VL
@@ -114,10 +114,10 @@ Example command for using [Qwen-VL](https://github.com/QwenLM/Qwen-VL). Script w
 Qwen-VL only tested with an RTX A4000 GPU on Windows and with an M1-Max on macOS (32GB RAM).
 
 ```sh
-python auto_alt_text pptx/test1.pptx --model qwen-vl
+python -m auto_alt_text pptx/test1.pptx --model qwen-vl
 
 # custom prompt to get brief image descriptions
-python auto_alt_text pptx/test1.pptx --model qwen-vl --prompt "What is the key information illustrated in this image"
+python -m auto_alt_text pptx/test1.pptx --model qwen-vl --prompt "What is the key information illustrated in this image"
 ```
 
 ## OpenCLIP
@@ -125,13 +125,13 @@ python auto_alt_text pptx/test1.pptx --model qwen-vl --prompt "What is the key i
 The Python script can also use [OpenCLIP](https://github.com/mlfoundations/open_clip) to generate descriptions of images in Powerpoint files. There are many OpenCLIP models and pretrained models that you can use. To find out the available models, use `--show_openclip_models`. The default model is `coca_ViT-L-14` and the pretrained model is `mscoco_finetuned_laion2B-s13B-b90k` (~2.55Gb model file will be downloaded).
 
 ```sh
-python auto_alt_text pptx/test1.pptx --model openclip
+python -m auto_alt_text pptx/test1.pptx --model openclip
 
 # list available OpenCLIP models
-python auto_alt_text pptx/test1.pptx --show_openclip_models
+python -m auto_alt_text pptx/test1.pptx --show_openclip_models
 
 # specify specific OpenCLIP model and pretained model
-python auto_alt_text pptx/test1.pptx --model openclip --openclip_model coca_ViT-L-14 --openclip_pretrained mscoco_finetuned_laion2B-s13B-b90k
+python -m auto_alt_text pptx/test1.pptx --model openclip --openclip_model coca_ViT-L-14 --openclip_pretrained mscoco_finetuned_laion2B-s13B-b90k
 ```
 
 ## OpenAI Vision models
@@ -141,10 +141,10 @@ To use [OpenAI](https://openai.com)'s models that support vision ([GPT-4o](https
 To use GPT-4o, use `--model gpt-4o`, for GPT-4 Turbo, use `--model gpt-4-turbo`.
 
 ```sh
-python auto_alt_text pptx/test1.pptx --model gpt-4o
+python -m auto_alt_text pptx/test1.pptx --model gpt-4o
 
 # custom prompt
-python auto_alt_text pptx/test1.pptx --model gpt-4o --prompt "Provide an image caption"
+python -m auto_alt_text pptx/test1.pptx --model gpt-4o --prompt "Provide an image caption"
 ```
 
 ## Multimodal LLMs through Ollama
@@ -167,16 +167,16 @@ ollama list
 ### Example of using LLaVA through Ollama
 
 ```sh
-python auto_alt_text pptx/test1.pptx --model llava --use_ollama
+python -m auto_alt_text pptx/test1.pptx --model llava --use_ollama
 
 # to disable default image resizing to 500px x 500px, set resize size to 0
-python auto_alt_text pptx/test1.pptx --model llava --use_ollama --resize 0
+python -m auto_alt_text pptx/test1.pptx --model llava --use_ollama --resize 0
 
 # specify a different prompt
-python auto_alt_text pptx/test1.pptx --model llava --use_ollama --prompt "Describe in simple words using one sentence."
+python -m auto_alt_text pptx/test1.pptx --model llava --use_ollama --prompt "Describe in simple words using one sentence."
 
 # specify differ server or port of the ollama server, default server is localhost, and port is 11434
-python auto_alt_text pptx/test1.pptx --model llava --use_ollama --server my_server.com --port 3456
+python -m auto_alt_text pptx/test1.pptx --model llava --use_ollama --server my_server.com --port 3456
 ```
 
 ## Multimodal models through MLX-VLM
@@ -184,7 +184,7 @@ python auto_alt_text pptx/test1.pptx --model llava --use_ollama --server my_serv
 Use LLaVA and other Multimodal models locally using [MLX-VLM](https://github.com/Blaizzy/mlx-vlm), which is based on [MLX](https://github.com/ml-explore/mlx) for Apple Silicon.
 
 ```sh
-python auto_alt_text pptx/test1.pptx --model mlx-community/llava-1.5-7b-4bit --use_mlx_vlm
+python -m auto_alt_text pptx/test1.pptx --model mlx-community/llava-1.5-7b-4bit --use_mlx_vlm
 ```
 
 ## Edit generated alt texts and apply to Powerpoint file
@@ -192,7 +192,7 @@ python auto_alt_text pptx/test1.pptx --model mlx-community/llava-1.5-7b-4bit --u
 The generated alt texts are saved to a text file so that these it can be edited. You can apply the edited alt texts in the file to the powerpoint file using the option `--replace`. The Powerpoint file is saved as `<filename>_alt_text.pptx`.
 
 ```sh
-python auto_alt_text pptx/test1.pptx --replace pptx/test1_kosmos-2_edited.txt
+python -m auto_alt_text pptx/test1.pptx --replace pptx/test1_kosmos-2_edited.txt
 ```
 
 ## Presenter notes
@@ -200,7 +200,7 @@ python auto_alt_text pptx/test1.pptx --replace pptx/test1_kosmos-2_edited.txt
 The models are prompted to generate alt texts using one or two senteneces for each image. For complex images and figures this description might not be sufficient, therefore a longer desciption of the slide as a whole can be generated to improve accessibility. This slide description will be placed in the slide presenter notes. The most accurate slide descriptions will be generated by multimodal LLMs (e.g. GPT-4o, LLaVA). To create slide descriptions when the slide has at least one image or non-text object, add `--add_to_notes`.
 
 ```sh
-python auto_alt_text pptx/test1.pptx --model llava:latest --use_ollama --add_to_notes
+python -m auto_alt_text pptx/test1.pptx --model llava:latest --use_ollama --add_to_notes
 ```
 
 ## Help
@@ -208,7 +208,7 @@ python auto_alt_text pptx/test1.pptx --model llava:latest --use_ollama --add_to_
 Add `--help` to show all command line options.
 
 ```sh
-python auto_alt_text --help
+python -m auto_alt_text --help
 ```
 
 ## Known issues

@@ -2,7 +2,7 @@
 
 from typing import Tuple
 import os
-import platform
+import sys
 import json
 import re
 import open_clip
@@ -14,11 +14,12 @@ from transformers import AutoProcessor, AutoModelForVision2Seq
 from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer
 #from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
 from transformers.generation import GenerationConfig
-from utils import resize, check_readonly_formats, convert_img_to_jpg, img_file_to_base64
 from mlx_vlm import load, generate
-#import mlx.core as mx
+from .utils import resize, check_readonly_formats, convert_img_to_jpg, img_file_to_base64
 
-def init_model(settings: dict) -> bool:
+def init_model(
+        settings: dict,
+    ) -> bool:
     """ download and init model for inference """
     err: bool = False
     model_str: str = settings["model"]
@@ -65,7 +66,8 @@ def setup_kosmos2(settings: dict, prompt: str) -> bool:
 def kosmos2(
         image_file_path: str,
         settings: dict,
-        for_notes: bool=False,
+        for_notes: bool = False,
+        verbose: bool = False
     ) -> Tuple[str, bool]:
     """ get image description from Kosmos-2 """
     err:bool = False
@@ -78,7 +80,7 @@ def kosmos2(
     with Image.open(image_file_path) as img:
 
         # resize image
-        img = resize(img, settings)
+        img = resize(img, settings, verbose)
 
         # prompt
         if for_notes:
@@ -168,6 +170,7 @@ def openclip(
         image_file_path: str,
         settings: dict,
         #for_notes: bool = False,
+        verbose: bool = False
     ) -> Tuple[str, bool]:
     """ get image description from OpenCLIP """
     err: bool = False
@@ -179,7 +182,7 @@ def openclip(
 
     with Image.open(image_file_path).convert('RGB') as img:
         # resize image
-        img = resize(img, settings)
+        img = resize(img, settings, verbose)
 
         preprocess = settings["openclip-preprocess"]
         img = preprocess(img).unsqueeze(0)
@@ -236,10 +239,10 @@ def setup_qwen_vl(settings: dict, prompt: str) -> bool:
             model = AutoModelForCausalLM.from_pretrained(model_name, device_map="mps", trust_remote_code=True).eval()
             model.generation_config = GenerationConfig.from_pretrained(model_name, trust_remote_code=True)
         else:
-            print(f"Model '{model_name}' requires >= 32GB RAM.")
+            print(f"Model '{model_name}' requires >= 32GB RAM.", file=sys.stderr)
             err = True
     else:
-        print(f"Model '{model_name}' requires a GPU with CUDA support")
+        print(f"Model '{model_name}' requires a GPU with CUDA support", file=sys.stderr)
         err = True
 
     settings["qwen-vl-model"] = model
@@ -250,7 +253,8 @@ def setup_qwen_vl(settings: dict, prompt: str) -> bool:
 def qwen_vl(
         image_file_path: str,
         settings: dict,
-        for_notes: bool=False,
+        for_notes: bool = False,
+        verbose: bool = False
     ) -> Tuple[str, bool]:
     """ get image description from Qwen-VL """
     err: bool = False
@@ -328,7 +332,7 @@ def setup_cog_vlm(settings: dict, prompt: str) -> bool:
             ).to('cuda').eval()
     else:
         if model_str == "cogvlm":
-            print("CogVLM requires a GPU with CUDA support.")
+            print("CogVLM requires a GPU with CUDA support.", file=sys.stderr)
             err = True
         elif model_str == "cogvlm2":
             model = AutoModelForCausalLM.from_pretrained(
@@ -366,6 +370,7 @@ def cog_vlm(
         image_file_path: str,
         settings: dict,
         for_notes: bool = False,
+        verbose: bool = False
     ) -> Tuple[str, bool]:
     """ get image description from CogVLM1 / CogVLM2 """
     err: bool = False
@@ -378,7 +383,7 @@ def cog_vlm(
     with Image.open(image_file_path).convert('RGB') as img:
 
         # resize image
-        img = resize(img, settings)
+        img = resize(img, settings, verbose)
 
         # prompt
         if for_notes:
@@ -429,6 +434,7 @@ def use_openai(
         extension: str,
         settings: dict,
         for_notes: bool = False,
+        verbose: bool = False,
         debug: bool = False
     ) -> Tuple[str, bool]:
     """ get image description from GPT-4V """
@@ -442,9 +448,10 @@ def use_openai(
 
     api_key = os.environ.get("OPENAI_API_KEY")
     if api_key is None or api_key == "":
-        print("OPENAI_API_KEY not found in environment")
+        print("OPENAI_API_KEY not found in environment", file=sys.stderr)
+        err = True
     else:
-        image_file_path = convert_img_to_jpg(image_file_path)
+        image_file_path = convert_img_to_jpg(image_file_path, verbose)
         img_base64_str = img_file_to_base64(image_file_path, settings)
 
         # prompt
@@ -491,18 +498,18 @@ def use_openai(
 
             if 'error' in json_out:
                 print()
-                print(json_out['error']['message'])
+                print(json_out['error']['message'], file=sys.stderr)
                 err = True
             else:
                 alt_text = json_out["choices"][0]["message"]["content"]
         except requests.exceptions.ConnectionError:
-            print(f"ConnectionError: Unable to access the server at: '{openai_server}'")
+            print(f"ConnectionError: Unable to access the server at: '{openai_server}'", file=sys.stderr)
             err = True
         except TimeoutError:
-            print("TimeoutError")
+            print("TimeoutError", file=sys.stderr)
             err = True
         except Exception as e:
-            print(f"Exception: '{str(e)}'")
+            print(f"Exception: '{str(e)}'", file=sys.stderr)
             err = True
 
     return alt_text, err
@@ -517,7 +524,7 @@ def setup_ollama(settings: dict, prompt: str) -> bool:
 
     if not err:
         settings['model'] = full_model_name
-        print(f"Model: {settings['model']}")
+        print(f"Model: '{settings['model']}'")
         print(f"Prompt: '{prompt}'")
     
     return err
@@ -536,10 +543,10 @@ def check_ollama_model_available(settings: dict) -> bool:
         response.raise_for_status()
 
     except requests.exceptions.ConnectionError:
-        print(f"ConnectionError: Unable to access the server at: '{ollama_url}'")
+        print(f"ConnectionError: Unable to access the server at: '{ollama_url}'", file=sys.stderr)
         err = True
     except TimeoutError:
-        print("TimeoutError")
+        print("TimeoutError", file=sys.stderr)
         err = True
     else:
         json_out = response.json()
@@ -553,12 +560,12 @@ def check_ollama_model_available(settings: dict) -> bool:
             all_models.append(m['name'])
 
         if err:
-            print("Models available on the Ollama server:")
+            print(f"Model: '{model_specified}' not available on the Ollama server", file=sys.stderr)
+            print("Models available on the Ollama server:", file=sys.stderr)
             for m in all_models:
-                print(f"  {m}")
+                print(f"  {m}", file=sys.stderr))
             print()
-            print(f"Model '{model_specified}' not found on Ollama server: '{ollama_url}'.")
-            print("Please pull the model using Ollama or use one of the other models available.\n")
+            print("Please pull the model using Ollama or use one of the other models available", file=sys.stderr)
 
     return err, model_specified
 
@@ -566,22 +573,22 @@ def use_ollama(
         image_file_path: str,
         settings: dict,
         for_notes: bool = False,
+        verbose: bool = False,
         debug: bool = False
     ) -> Tuple[str, bool]:
     """ get image description from model accessed Ollama server """
     err: bool = False
     alt_text: str = "Error"
 
-    if not err:
-        # check if readonly
-        image_file_path, readonly, msg = check_readonly_formats(image_file_path)
-        if readonly:
-            return msg, False
+    # check if readonly
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path)
+    if readonly:
+        return msg, False
 
-        image_file_path = convert_img_to_jpg(image_file_path)
-        img_base64_str = img_file_to_base64(image_file_path, settings)
+    #image_file_path = convert_img_to_jpg(image_file_path, verbose)
+    img_base64_str = img_file_to_base64(image_file_path, settings)
 
-    if not err and len(img_base64_str) > 0:
+    if len(img_base64_str) > 0:
         # prompt
         prompt: str
         if for_notes:
@@ -606,10 +613,10 @@ def use_ollama(
             response = requests.post(ollama_url, headers=headers, json=payload, timeout=60)
             response.raise_for_status()
         except requests.exceptions.ConnectionError:
-            print(f"ConnectionError: Unable to access the server at: '{ollama_url}'")
+            print(f"ConnectionError: Unable to access the server at: '{ollama_url}'", file=sys.stderr)
             err = True
         except TimeoutError:
-            print("TimeoutError")
+            print("TimeoutError", file=sys.stderr)
             err = True
         else:
             json_out = response.json()
@@ -618,7 +625,7 @@ def use_ollama(
                 print(json.dumps(json_out, indent=4))
 
             if 'error' in json_out:
-                print("ERROR in ouput")
+                print("ERROR in ouput", file=sys.stderr)
                 print(json.dumps(json_out, indent=4))
                 err = True
             else:
@@ -628,7 +635,7 @@ def use_ollama(
                 # remove double spaces
                 alt_text = alt_text.replace("  ", " ")
     else:
-        print("Error, image size is zero")
+        print("Error, image size is zero", file = sys.stderr)
         err = True
 
     return alt_text, err
@@ -652,6 +659,7 @@ def phi3_vision(
         image_file_path: str,
         settings: dict,
         for_notes: bool = False,
+        verbose: bool = False
     ) -> Tuple[str, bool]:
     """ Phi3 Vision only works with certain GPUs, see https://huggingface.co/microsoft/Phi-3-vision-128k-instruct for more info """
     err: bool = False
@@ -662,7 +670,7 @@ def phi3_vision(
     if readonly:
         return msg, False
 
-    image_file_path = convert_img_to_jpg(image_file_path)
+    #image_file_path = convert_img_to_jpg(image_file_path, verbose)
     img_base64_str = img_file_to_base64(image_file_path, settings)
 
     # prompt
@@ -712,12 +720,16 @@ def setup_mlx_vlm(settings: dict) -> bool:
     settings['mlx-vlm-model'] = model
     settings['mlx-vlm-tokenizer'] = processor
 
+    print(f"Model: '{settings['model']}'")
+    print(f"Prompt: {settings['prompt']}")
+    
     return False
 
 def use_mlx_vlm(
         image_file_path: str,
         settings: dict,
         for_notes: bool = False,
+        verbose: bool = False,
         debug: bool = False
     ) -> Tuple[str, bool]:
     """ MLX VLM """
@@ -735,7 +747,7 @@ def use_mlx_vlm(
         if readonly:
             return msg, False
 
-        image_file_path = convert_img_to_jpg(image_file_path)
+        #image_file_path = convert_img_to_jpg(image_file_path, verbose)
         img_base64_str = img_file_to_base64(image_file_path, settings)
 
         if for_notes:

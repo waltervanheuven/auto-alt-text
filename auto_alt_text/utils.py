@@ -2,6 +2,7 @@
 
 from typing import Tuple
 import os
+import sys
 import io
 import platform
 import subprocess
@@ -18,9 +19,9 @@ def check_server_is_running(url: str) -> bool:
         if response.status_code == 200:
             status = True
     except requests.exceptions.Timeout:
-        print("Timeout exception")
+        print("Timeout exception", file=sys.stderr)
     except requests.exceptions.RequestException as e:
-        print(f"Exception: {str(e)}")
+        print(f"Exception: {str(e)}", file=sys.stderr)
 
     return status
 
@@ -112,14 +113,17 @@ def check_readonly_formats(image_file_path: str) -> Tuple[str, str, bool]:
             if err:
                 readonly = True
                 new_image_file_path = image_file_path
-                print(r.stderr)
+                print(r.stderr, file=sys.stderr)
 
     if readonly:
         print(f"Warning, unable to open '{img.format}' file. Replace image in powerpoint with PNG, TIFF, or JPEG version.")
 
     return new_image_file_path, readonly, msg
 
-def convert_img_to_jpg(image_file_path: str) -> str:
+def convert_img_to_jpg(
+        image_file_path: str,
+        verbose: bool = False,
+    ) -> str:
     """ convert image file to jpg """
     
     with Image.open(image_file_path) as img:
@@ -132,7 +136,8 @@ def convert_img_to_jpg(image_file_path: str) -> str:
             img.save(jpeg_image_file_path, 'JPEG')
             image_file_path = jpeg_image_file_path
 
-    print(f"Image file size: {os.path.getsize(image_file_path):,} bytes")
+    if verbose:
+        print(f"Image file size: {os.path.getsize(image_file_path):,} bytes")
 
     return image_file_path
 
@@ -158,14 +163,19 @@ def img_file_to_base64(image_file_path: str , settings: dict) -> str:
 
     return base64_str
 
-def resize(image: Image.Image, settings: dict) -> Image.Image:
+def resize(
+        image: Image.Image,
+        settings: dict,
+        verbose: bool = False
+    ) -> Image.Image:
     """ resize image """
     px: int = settings["img_size"]
     if px != 0:
         # only resize if img_size != 0
         if image.width > px or image.height > px:
             new_size = (min(px, image.width), min(px, image.height))
-            print(f"Resize image from ({image.width}, {image.height}) to {new_size}")
+            if verbose:
+                print(f"Resize image from ({image.width}, {image.height}) to {new_size}")
             image = image.resize(new_size)
 
     return image

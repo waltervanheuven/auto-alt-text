@@ -54,9 +54,9 @@ def process_images_from_pptx(
     if not report:
         # generate alt text
         if settings["use_mlx_vlm"]:
-            out_file_name = os.path.join(dirname, f"{pptx_name}_{model_str.replace("/", "_")}.txt")
+            out_file_name = os.path.join(dirname, f"{pptx_name}_{model_str.replace('/', '_')}.txt")
         else:
-            out_file_name = os.path.join(dirname, f"{pptx_name}_{model_str.replace(":", "_")}.txt")
+            out_file_name = os.path.join(dirname, f"{pptx_name}_{model_str.replace(':', '_')}.txt")
     elif report:
         # just report
         out_file_name = os.path.join(dirname, f"{pptx_name}.txt")
@@ -147,9 +147,9 @@ def process_images_from_pptx(
         if not report:
             # Save new pptx file
             if settings["use_mlx_vlm"]:
-                new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_{model_str.replace("/", "_")}{pptx_extension}")
+                new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_{model_str.replace('/', '_')}{pptx_extension}")
             else:
-                new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_{model_str.replace(":", "_")}{pptx_extension}")
+                new_pptx_file_name = os.path.join(dirname, f"{pptx_name}_{model_str.replace(':', '_')}{pptx_extension}")
 
             print(f"\nSaving Powerpoint file with new alt-text to '{new_pptx_file_name}'\n")
 

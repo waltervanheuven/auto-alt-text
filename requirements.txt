@@ -11,3 +11,4 @@ ollama
 accelerate
 pytictoc
 flash_attn; platform_system != "Darwin"
+mlx_vlm; platform_system == "Darwin"

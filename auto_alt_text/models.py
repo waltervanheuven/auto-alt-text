@@ -3,6 +3,7 @@
 from typing import Tuple
 import os
 import sys
+import platform
 import json
 import re
 import open_clip
@@ -14,8 +15,9 @@ from transformers import AutoProcessor, AutoModelForVision2Seq
 from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer
 #from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
 from transformers.generation import GenerationConfig
-from mlx_vlm import load, generate
 from .utils import resize, check_readonly_formats, convert_img_to_jpg, img_file_to_base64
+if platform.system() == "Darwin":
+    from mlx_vlm import load, generate
 
 def init_model(
         settings: dict,
@@ -563,7 +565,7 @@ def check_ollama_model_available(settings: dict) -> bool:
             print(f"Model: '{model_specified}' not available on the Ollama server", file=sys.stderr)
             print("Models available on the Ollama server:", file=sys.stderr)
             for m in all_models:
-                print(f"  {m}", file=sys.stderr))
+                print(f"  {m}", file=sys.stderr)
             print()
             print("Please pull the model using Ollama or use one of the other models available", file=sys.stderr)
 

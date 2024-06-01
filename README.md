@@ -33,10 +33,21 @@ pip install -r requirements.txt
 
 To generate `Alt Text` for Windows Metafile (WMF) images in Powerpoint on macOS and Linux, the script needs [LibreOffice](https://www.libreoffice.org) to convert WMF to a bitmap format. On macOS use [brew](https://brew.sh) to install LibreOffice. Furthermore, for additional functionality install [qpdf](https://github.com/qpdf/qpdf) and [ImageMagick](https://imagemagick.org).
 
+### macOS
+
 ```sh
 brew install libreoffice
 brew install qpdf
 brew install imagemagick
+```
+
+### Linux
+
+```sh
+apt-get install imagemagick
+apt-get install libreoffice
+apt-get install qpdf
+apt-get install poppler-utils
 ```
 
 For cuda support on Linux, follow instructions on the [PyTorch website](https://pytorch.org/get-started/locally/) to install torch with cuda support.
@@ -176,7 +187,7 @@ python -m auto_alt_text pptx/test1.pptx --model llava --use_ollama --resize 0
 python -m auto_alt_text pptx/test1.pptx --model llava --use_ollama --prompt "Describe in simple words using one sentence."
 
 # specify differ server or port of the ollama server, default server is localhost, and port is 11434
-python -m auto_alt_text pptx/test1.pptx --model llava --use_ollama --server my_server.com --port 3456
+python -m auto_alt_text pptx/test1.pptx --model llava --use_ollama --server http://my_server.com --port 3456
 ```
 
 ## Multimodal models through MLX-VLM

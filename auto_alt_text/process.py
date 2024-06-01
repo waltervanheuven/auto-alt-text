@@ -1,6 +1,6 @@
 """ process.py """
 
-from typing import Generator
+from typing import Generator, List
 import os
 import sys
 import argparse
@@ -11,6 +11,7 @@ import torch
 from pytictoc import TicToc
 from .powerpoint import process_shape, process_shapes_from_file, export_slides_to_images
 from .powerpoint import add_presenter_note, remove_presenter_notes, export_presenter_notes
+from .powerpoint import get_slide_img_path
 from .models import show_openclip_models, init_model
 from .utils import str2bool
 from pptx import Presentation
@@ -94,7 +95,7 @@ def process_images_from_pptx(
         pptx["fout"] = fout
 
         # write header
-        fout.write("Model\tFile\tSlide\tObjectName\tObjectType\tPartOfGroup\tAlt_Text\tLenAltText\tDecorative\tPictFilePath\n")
+        fout.write("Model\tFile\tSlide\tObjectName\tObjectType\tPartOfGroup\tAlt_Text\tLenAltText\tPresenterNotes\tDecorative\tPictFilePath\n")
 
         # total number of images in the pptx
         image_cnt:int = 0
@@ -123,6 +124,24 @@ def process_images_from_pptx(
                 # remove current presenter note
                 slide = pptx["current_slide"]
                 slide.notes_slide.notes_text_frame.text = ""
+
+                fout = pptx['fout']
+                model_str = settings['model']
+                pptx_extension = pptx['pptx_extension']
+                alt_text = ""
+                presenter_notes = slide.notes_slide.notes_text_frame.text
+                if not isinstance(presenter_notes, str):
+                    presenter_notes = ""
+                
+                slide_image_file_path = get_slide_img_path(file_path, pptx)
+                # check if exists because when creating accessibility report image might not 
+                # yet have been created
+                if not os.path.isfile(slide_image_file_path):
+                    slide_image_file_path = ""
+
+                fout.write(
+                    f"{model_str}\t{pptx_name}{pptx_extension}\t{pptx["slide_cnt"] + 1}\tSlide\t\t\t{alt_text}\t{len(alt_text)}\t{presenter_notes}\tFalse\t{slide_image_file_path}\n"
+                )
 
             # if err break out slide loop
             if err:
@@ -158,20 +177,31 @@ def process_images_from_pptx(
         else:
             pptx_file = file_path
 
-        accessibility_report(out_file_name, pptx_file, debug)
+        # accessibility report
+        print("---- Accessibility report --------------------------------------------")
+
+        report = accessibility_report(out_file_name, pptx_file, debug)
+        for l in report:
+            print(l)
+
+        print("----------------------------------------------------------------------")
 
     return err
 
-def accessibility_report(out_file_name: str, pptx_file_name: str, debug:bool = False) -> None:
+def accessibility_report(out_file_name: str, pptx_name: str, debug:bool = False) -> List[str]:
     """
     Create accessibility report based on infomation in the text file generated
     """
-    # accessibility report
-    print("---- Accessibility report --------------------------------------------")
-    print(f"Powerpoint file: '{pptx_file_name}'")
-    empty_alt_txt:int = 0
-    alt_text_list:list = []
-    img_cnt:int = 0
+    lines = []
+    lines.append(f"PowerPoint file: '{pptx_name}'")
+
+    empty_alt_txt: int = 0
+    empty_slide_presenter_notes: int = 0
+    alt_text_list: list = []
+    img_cnt: int = 0
+    img_decorative_cnt: int = 0
+    slide_cnt: int = 0
+
     with open(out_file_name, "r", encoding="utf-8") as file:
         # tab delimited file
         csv_reader = csv.reader(file, delimiter="\t")
@@ -181,28 +211,40 @@ def accessibility_report(out_file_name: str, pptx_file_name: str, debug:bool = F
 
         # process rows
         for row in csv_reader:
-            if len(row) == 10 and len(row[8]) > 0 and not str2bool(row[7]):
-                # not decorative
-                if len(row[6]) == 0:
-                    if debug:
-                        print(row)
-                    empty_alt_txt += 1
+            if len(row) == 11:
+                if row[4] == "Picture" and not str2bool(row[9]):
+                    if int(row[7]) == 0:
+                        # not decorative
+                        empty_alt_txt += 1
+                    
+                    # create list of alt text length
+                    alt_text_list.append(int(row[7]))
+
+                if row[4] == "Picture" and str2bool(row[9]):
+                    img_decorative_cnt += 1
                 if row[4] == "Picture":
                     img_cnt += 1
+                if row[3] == "Slide":
+                    slide_cnt += 1
+                    if len(row[8]) == 0:
+                        empty_slide_presenter_notes += 1
 
-                # create list of alt text length
-                alt_text_list.append(int(row[7]))
-            elif len(row) != 10:
-                print(f"Unexpected row length: {len(row)}, row: {row}")
+            elif len(row) != 11:
+                lines.append(f"Unexpected row length: {len(row)}, row: {row}")
 
-    print(f"Images: {img_cnt}")
-    print(f"Objects: {csv_reader.line_num - 1}")
+    lines.append(f"Slides: {slide_cnt}")
+    lines.append(f"Images: {img_cnt}")
+    lines.append(f"Decorative Images: {img_decorative_cnt}")
+    lines.append(f"Objects: {csv_reader.line_num - 1}")
 
-    print(f"Number of missing alt texts for Group(s), Image(s) or Objects(s): {empty_alt_txt}")
-    print(f"Min alt text length: {min(alt_text_list)}")
-    print(f"Max alt text length: {max(alt_text_list)}")
+    lines.append(f"Number of missing Alt Text for non-decorative images: {empty_alt_txt}")
+    if len(alt_text_list) > 0:
+        lines.append(f"Min alt text length: {min(alt_text_list)}")
+        lines.append(f"Max alt text length: {max(alt_text_list)}")
 
-    print("----------------------------------------------------------------------")
+    lines.append(f"Number of slides without presenter notes: {empty_slide_presenter_notes}")
+
+    return lines
 
 
 def replace_alt_texts(file_path: str, file_path_txt_file: str, debug:bool = False) -> bool:
@@ -267,6 +309,9 @@ def process_pptx() -> int:
     parser.add_argument("--report", action='store_true', default=False, help="flag to generate alt text report")
     parser.add_argument("--model", type=str, default="", help="kosmos-2, openclip, llava, gpt-4o, gpt-4-turbo, cogvlm, cogvlm2")
 
+    #OpenAI
+    parser.add_argument("--openai_api_key", type=str, default="", help="OpenAI API Key")
+
     # Ollama
     parser.add_argument("--use_ollama", action='store_true', default=False, help="use Ollama server")
     parser.add_argument("--server", type=str, default="http://localhost", help="Ollama server URL, default=http://localhost")
@@ -287,7 +332,8 @@ def process_pptx() -> int:
     #
     #parser.add_argument("--save", action='store_true', default=False, help="flag to save powerpoint file with updated alt texts")
     parser.add_argument("--replace", type=str, default="", help="replace alt texts in pptx with those specified in file")
-    parser.add_argument("--remove_presenter_notes", action='store_true', default=False, help="remove all presenter notes")
+    parser.add_argument("--replace_presenter_notes", action='store_true', default=True, help="replace or add to existing")
+    parser.add_argument("--remove_presenter_notes", action='store_true', default=False, help="remove all presenter notes from powerpoint file")
     parser.add_argument("--export_presenter_notes", action='store_true', default=False, help="export presenter notes")
     parser.add_argument("--export_slides", action='store_true', default=False, help="export pptx slides to png images")
     #
@@ -352,6 +398,7 @@ def process_pptx() -> int:
         settings:dict = {
             "report": args.report,
             "model": model_str,
+            "openai_api_key": args.openai_api_key,
             "kosmos2_model": None,
             "kosmos2_pretrained": None,
             "openclip_model_name": args.openclip_model,
@@ -372,6 +419,7 @@ def process_pptx() -> int:
             "prompt": prompt,
             "prompt_notes": prompt_presenter_notes,
             "img_size": int(args.resize),
+            "replace_presenter_notes": args.replace_presenter_notes,
             "add_to_notes": args.add_to_notes,
             "add_to_notes_all_slides": args.add_to_notes_all_slides
         }

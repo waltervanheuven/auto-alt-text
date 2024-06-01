@@ -6,7 +6,6 @@ import sys
 import io
 import platform
 import pathlib
-import shutil
 import subprocess
 from PIL import Image
 from pptx.util import Cm
@@ -150,7 +149,7 @@ def process_shape(
                     print(f"Slide: {slide_cnt + 1}, Group: {group_shape.name}, alt_text: '{stored_alt_text}'")
 
             fout = pptx["fout"]
-            fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{group_shape.name}\tGroup\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}\n")
+            fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{group_shape.name}\tGroup\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t\t{bool2str(decorative)}\t{image_file_path}\n")
 
             # remove last one
             group_shape_list = pptx["group_shape_list"]
@@ -187,7 +186,7 @@ def process_shape(
                 pptx_name:str = pptx["pptx_name"]
                 pptx_extension:str = pptx["pptx_extension"]
                 fout = pptx["fout"]
-                fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\tPicture\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}\n")
+                fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\tPicture\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t\t{bool2str(decorative)}\t{image_file_path}\n")
 
                 pptx["slide_image_cnt"] = slide_image_cnt + 1
 
@@ -403,7 +402,7 @@ def process_object(
     pptx_name:str = pptx["pptx_name"]
     pptx_extension:str = pptx["pptx_extension"]
     fout = pptx["fout"]
-    fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\t{shape_type2str(shape.shape_type)}\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t{bool2str(decorative)}\t{image_file_path}\n")
+    fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\t{shape_type2str(shape.shape_type)}\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t\t{bool2str(decorative)}\t{image_file_path}\n")
 
 def remove_newlines(txt:str) -> str:
     """ remove newlines and replace tabs with spaces """
@@ -489,7 +488,10 @@ def process_shape_and_generate_alt_text(
         except AttributeError:
             slide_cnt:int = pptx["slide_cnt"] + 1
             print(f"Error, slide: {slide_cnt}, pict: '{shape.name}', unable to access image", file=sys.stderr)
-            #err = True
+            err = True
+
+    if verbose:
+        print(f"slide: {pptx["slide_cnt"] + 1}, image: {pptx["slide_image_cnt"]}, extension: {extension}")
 
     if not err and image_stream is not None:
         report:bool = settings["report"]
@@ -667,28 +669,46 @@ def add_presenter_note(
     """ add presenter note to each slide """
     err:bool = False
 
-    pptx_name:str = pathlib.Path(pptx_path).stem
-    #pptx_extension:str = pathlib.Path(pptx_path).suffix
-    dirname:str = os.path.dirname(pptx_path)
-
-    slide_dir:str = os.path.join(dirname, pptx_name, "slides_png")
-    current_slide:int = pptx["slide_cnt"]
-    #t = num2str(pptx['pptx_nslides'], current_slide + 1)
-    t = str(current_slide + 1)
-    file_name:str = f"{pptx_name}-{t}.png"
-    slide_image_file_path = os.path.join(slide_dir, file_name)
+    slide_image_file_path = get_slide_img_path(pptx_path, pptx)
 
     if os.path.isfile(slide_image_file_path):
-        alt_text, err = generate_description(slide_image_file_path, ".png", settings, for_notes=True, verbose=verbose)
+        presenter_notes, err = generate_description(slide_image_file_path, ".png", settings, for_notes=True, verbose=verbose)
         slide = pptx["current_slide"]
-        slide.notes_slide.notes_text_frame.text = alt_text
+        
+        if settings['replace_presenter_notes']:
+            slide.notes_slide.notes_text_frame.text = presenter_notes
+        else:
+            slide.notes_slide.notes_text_frame.text = f"{presenter_notes}{slide.notes_slide.notes_text_frame.text}"
+
         if verbose:
-            print(f"Slide: {current_slide + 1}\t{alt_text}")
+            print(f"Slide: {pptx["slide_cnt"] + 1}\t{presenter_notes}")
+
+        fout = pptx['fout']
+        model_str = settings['model']
+        pptx_extension = pptx['pptx_extension']
+        fout.write(
+            f"{model_str}\t{pathlib.Path(pptx_path).stem}{pptx_extension}\t{pptx["slide_cnt"] + 1}\tSlide\t\t\t\t\t{presenter_notes}\tFalse\t{slide_image_file_path}\n"
+        )
+
     else:
         print(f"Unable to access image file: {slide_image_file_path}", file=sys.stderr)
         err = True
 
     return err
+
+def get_slide_img_path(pptx_path: str, pptx: dict) -> str:
+    """ return slide image path """
+    pptx_name: str = pathlib.Path(pptx_path).stem
+    #pptx_extension:str = pathlib.Path(pptx_path).suffix
+    dirname: str = os.path.dirname(pptx_path)
+
+    slide_dir: str = os.path.join(dirname, pptx_name, "slides_png")
+    t = num2str(pptx['pptx_nslides'], pptx["slide_cnt"] + 1)
+    #t = str(pptx["slide_cnt"] + 1)
+    file_name:str = f"{pptx_name}-{t}.png"
+    slide_image_file_path = os.path.join(slide_dir, file_name)
+
+    return slide_image_file_path
 
 def remove_presenter_notes(
         pptx_path:str,
@@ -786,6 +806,7 @@ def export_slides_to_images(
 
             for i, slide in enumerate(presentation.Slides):
                 p = num2str(n_slides, i + 1)
+                #p = str(i + 1)
                 file_path = os.path.join(abs_path_to_folder_to_save, f"{pptx_name}-{p}.png")
                 slide.Export(file_path, "PNG")
 
@@ -802,11 +823,11 @@ def export_slides_to_images(
         #print("Exporting to PDF...")
 
         cmd:list[str] = ["soffice", "--headless", "--convert-to", "pdf", pptx_path, "--outdir", path_to_folder_to_save]
-        path_to_cmd = shutil.which(cmd[0])
-        if path_to_cmd is not None:
-            r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
-        else:
+        try:
+            _ = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
+        except subprocess.CalledProcessError:
             print("Warning, LibreOffice not installed.", file=sys.stderr)
+            err = True
 
         # save each page as a separate file
         if verbose:
@@ -816,11 +837,11 @@ def export_slides_to_images(
         out_file_name:str = os.path.join(path_to_folder_to_save, f"{pptx_name}.pdf")
 
         cmd = ["qpdf", "--split-pages", pdf_file, out_file_name]
-        path_to_cmd = shutil.which(cmd[0])
-        if path_to_cmd is not None:
-            r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
-        else:
-            print("Warning, qpdf not installed.", file=sys.stderr)
+        try:
+            _ = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
+        except subprocess.CalledProcessError:
+            print("Error, qpdf not installed.", file=sys.stderr)
+            err = True
 
         # export from PDF to PNG
         if verbose:
@@ -831,36 +852,45 @@ def export_slides_to_images(
                 if not f.startswith(".") and f.startswith(f"{pptx_name}-"):
                     in_file = os.path.join(path_to_folder_to_save, f)
                     cmd = ["sips", "-s", "dpiWidth", "300", "-s", "dpiHeight", "300", "-s", "format", "png", in_file, "--out", path_to_folder_to_save]
-                    path_to_cmd = shutil.which(cmd[0])
 
-                    if path_to_cmd is not None:
-                        r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True) #capture_output = True)
-                    else:
-                        print("Unable to find 'sips'", file=sys.stderr)
+                    try:
+                        _ = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True) #capture_output = True)
+                    except subprocess.CalledProcessError:
+                        print("Unable find 'sips'", file=sys.stderr)
+                        err = True
         else:
             # Linux
             the_files = os.listdir(path_to_folder_to_save)
             for f in the_files:
                 if not f.startswith(".") and f.startswith(f"{pptx_name}-"):
-                    in_file = os.path.join(path_to_folder_to_save, f"{f}[0]")
-                    out_file = f"{pathlib.Path(in_file).stem}.png"
-                    cmd = ["convert", in_file, "-density", "300", out_file]
-                    path_to_cmd = shutil.which(cmd[0])
+                    in_file = os.path.join(path_to_folder_to_save, f"{f}")
+                    out_file = os.path.join(path_to_folder_to_save, f"{pathlib.Path(in_file).stem}")
+                    cmd = ["pdftoppm", "-png", "-r", "300", in_file, out_file]
 
-                    if path_to_cmd is not None:
-                        r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True) #capture_output = True)
-                    else:
-                        print("Unable to find 'convert'", file=sys.stderr)
+                    try:
+                        _ = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True) #capture_output = True)
+                    except subprocess.CalledProcessError:
+                        print("Unable exec 'convert'", file=sys.stderr)
+                        err = True
+                        
+                    # rename files
+                    for f in os.listdir(path_to_folder_to_save):
+                        if not f.startswith(".") and f.endswith("-1.png") and f.count("-") == 2:
+                            new_filename = f.replace("-1.png", ".png")
+                            pid = os.rename(os.path.join(path_to_folder_to_save, f), os.path.join(path_to_folder_to_save, new_filename))
+                            if pid:
+                                _ = os.wait()
         # remove PDFs
         for f in the_files:
-            if not f.startswith(".") and f.startswith(f"{pptx_name}-"):
+            if not f.startswith(".") and f.startswith(f"{pptx_name}-") and f.endswith(".pdf"):
                 in_file = os.path.join(path_to_folder_to_save, f)
                 pid = os.remove(in_file)
                 if pid:
                     _ = os.wait()
 
         # remove exported PDF file
-        #os.remove(pdf_file)
+        os.remove(pdf_file)
+        
         if verbose:
             print(f"Slides saved as PNG images in folder: '{path_to_folder_to_save}'")
     else:
@@ -931,7 +961,8 @@ def images_to_pptx(
 
 def generate_description(
         image_file_path: str,
-        extension: str, settings: dict,
+        extension: str,
+        settings: dict,
         for_notes: bool = False,
         verbose: bool = False,
         debug: bool = False
@@ -948,20 +979,20 @@ def generate_description(
             print("Generating alt text...")
 
     if settings["use_ollama"]:
-        alt_text, err = use_ollama(image_file_path, settings, for_notes, verbose, debug)
+        alt_text, err = use_ollama(image_file_path, extension, settings, for_notes, verbose, debug)
     elif settings["use_mlx_vlm"]:
-        alt_text, err = use_mlx_vlm(image_file_path, settings, for_notes, verbose, debug)
+        alt_text, err = use_mlx_vlm(image_file_path, extension, settings, for_notes, verbose, debug)
     else:
         if model_str == "kosmos-2":
-            alt_text, err = kosmos2(image_file_path, settings, for_notes, verbose)
+            alt_text, err = kosmos2(image_file_path, extension, settings, for_notes, verbose)
         elif model_str == "openclip":
-            alt_text, err = openclip(image_file_path, settings, verbose)
+            alt_text, err = openclip(image_file_path, extension, settings, verbose)
         elif model_str == "qwen-vl":
-            alt_text, err = qwen_vl(image_file_path, settings, for_notes, verbose)
+            alt_text, err = qwen_vl(image_file_path, extension, settings, for_notes, verbose)
         elif model_str == "cogvlm" or model_str == "cogvlm2":
-            alt_text, err = cog_vlm(image_file_path, settings, for_notes, verbose)
+            alt_text, err = cog_vlm(image_file_path, extension, settings, for_notes, verbose)
         elif model_str == "phi3-vision":
-            alt_text, err = phi3_vision(image_file_path, settings, for_notes, verbose)
+            alt_text, err = phi3_vision(image_file_path, extension, settings, for_notes, verbose)
         elif model_str == "gpt-4o" or model_str == "gpt-4-turbo":
             alt_text, err = use_openai(image_file_path, extension, settings, for_notes, verbose, debug)
         else:

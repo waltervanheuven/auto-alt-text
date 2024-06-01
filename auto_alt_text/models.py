@@ -1,6 +1,6 @@
 """ models.py """
 
-from typing import Tuple
+from typing import Tuple, List
 import os
 import sys
 import platform
@@ -67,6 +67,7 @@ def setup_kosmos2(settings: dict, prompt: str) -> bool:
 
 def kosmos2(
         image_file_path: str,
+        extension: str,
         settings: dict,
         for_notes: bool = False,
         verbose: bool = False
@@ -75,7 +76,7 @@ def kosmos2(
     err:bool = False
 
     # check if readonly
-    image_file_path, readonly, msg = check_readonly_formats(image_file_path)
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
     if readonly:
         return msg, False
 
@@ -170,6 +171,7 @@ def setup_openclip(settings: dict) -> bool:
 
 def openclip(
         image_file_path: str,
+        extension: str,
         settings: dict,
         #for_notes: bool = False,
         verbose: bool = False
@@ -178,7 +180,7 @@ def openclip(
     err: bool = False
 
     # check if readonly
-    image_file_path, readonly, msg = check_readonly_formats(image_file_path)
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
     if readonly:
         return msg, False
 
@@ -254,6 +256,7 @@ def setup_qwen_vl(settings: dict, prompt: str) -> bool:
 
 def qwen_vl(
         image_file_path: str,
+        extension: str,
         settings: dict,
         for_notes: bool = False,
         verbose: bool = False
@@ -262,7 +265,7 @@ def qwen_vl(
     err: bool = False
 
     # check if readonly
-    image_file_path, readonly, msg = check_readonly_formats(image_file_path)
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
     if readonly:
         return msg, False
 
@@ -370,6 +373,7 @@ def setup_cog_vlm(settings: dict, prompt: str) -> bool:
 
 def cog_vlm(
         image_file_path: str,
+        extension: str,
         settings: dict,
         for_notes: bool = False,
         verbose: bool = False
@@ -378,7 +382,7 @@ def cog_vlm(
     err: bool = False
 
     # check if readonly
-    image_file_path, readonly, msg = check_readonly_formats(image_file_path)
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
     if readonly:
         return msg, False
 
@@ -444,14 +448,17 @@ def use_openai(
     alt_text:str = "Error"
 
     # check if readonly
-    image_file_path, readonly, msg = check_readonly_formats(image_file_path)
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
     if readonly:
         return msg, False
 
     api_key = os.environ.get("OPENAI_API_KEY")
     if api_key is None or api_key == "":
-        print("OPENAI_API_KEY not found in environment", file=sys.stderr)
-        err = True
+        # otherwise get api key from args
+        api_key = settings['openai_api_key']
+        if api_key == "":
+            print("OPENAI_API_KEY not found in environment", file=sys.stderr)
+            err = True
     else:
         image_file_path = convert_img_to_jpg(image_file_path, verbose)
         img_base64_str = img_file_to_base64(image_file_path, settings)
@@ -531,7 +538,7 @@ def setup_ollama(settings: dict, prompt: str) -> bool:
     
     return err
 
-def check_ollama_model_available(settings: dict) -> bool:
+def check_ollama_model_available(settings: dict) -> Tuple[bool, str]:
     """ Check if model is available on Ollama server """
     err: bool = False
     model_specified = settings["model"]
@@ -540,26 +547,12 @@ def check_ollama_model_available(settings: dict) -> bool:
 
     # check if model available
     ollama_url = f"{settings['ollama_url']}/api/tags"
-    try:
-        response = requests.get(ollama_url, timeout=10)
-        response.raise_for_status()
+    err, all_models = get_ollama_models(ollama_url)
 
-    except requests.exceptions.ConnectionError:
-        print(f"ConnectionError: Unable to access the server at: '{ollama_url}'", file=sys.stderr)
-        err = True
-    except TimeoutError:
-        print("TimeoutError", file=sys.stderr)
-        err = True
-    else:
-        json_out = response.json()
-        ollama_model_response = json_out["models"]
-
-        err = True
-        all_models = []
-        for m in ollama_model_response:
-            if model_specified == m['name']:
-                err = False
-            all_models.append(m['name'])
+    if not err:
+        err = False
+        if model_specified not in all_models:
+            err = True
 
         if err:
             print(f"Model: '{model_specified}' not available on the Ollama server", file=sys.stderr)
@@ -571,8 +564,40 @@ def check_ollama_model_available(settings: dict) -> bool:
 
     return err, model_specified
 
+def get_ollama_models(ollama_url: str) -> Tuple[bool, List[str]]:
+    """ get list of models available on the server """
+    all_models: List[str] = []
+    err: bool = False
+
+    try:
+        response = requests.get(ollama_url, timeout=10)
+        response.raise_for_status()
+
+    except requests.exceptions.ConnectionError:
+        print(f"ConnectionError: Unable to access the server at: '{ollama_url}'", file=sys.stderr)
+        err = True
+    except requests.exceptions.InvalidSchema:
+        print(f"InvalidSchema: Unable to access the server at: '{ollama_url}'", file=sys.stderr)
+        err = True
+    except TimeoutError:
+        print("TimeoutError", file=sys.stderr)
+        err = True
+    else:
+        try:
+            json_out = response.json()
+        except requests.exceptions.JSONDecodeError:
+            print("JSONDecodeError", file=sys.stderr)
+            err = True
+        else:
+            ollama_model_response = json_out["models"]
+            for m in ollama_model_response:
+                all_models.append(m['name'])
+
+    return err, all_models
+
 def use_ollama(
         image_file_path: str,
+        extension: str,
         settings: dict,
         for_notes: bool = False,
         verbose: bool = False,
@@ -583,7 +608,7 @@ def use_ollama(
     alt_text: str = "Error"
 
     # check if readonly
-    image_file_path, readonly, msg = check_readonly_formats(image_file_path)
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
     if readonly:
         return msg, False
 
@@ -616,6 +641,9 @@ def use_ollama(
             response.raise_for_status()
         except requests.exceptions.ConnectionError:
             print(f"ConnectionError: Unable to access the server at: '{ollama_url}'", file=sys.stderr)
+            err = True
+        except requests.exceptions.HTTPError:
+            print("HTTPError", file=sys.stderr)
             err = True
         except TimeoutError:
             print("TimeoutError", file=sys.stderr)
@@ -659,6 +687,7 @@ def setup_phi3_vision(settings: dict) -> bool:
 
 def phi3_vision(
         image_file_path: str,
+        extension: str,
         settings: dict,
         for_notes: bool = False,
         verbose: bool = False
@@ -667,7 +696,7 @@ def phi3_vision(
     err: bool = False
 
     # check if readonly
-    image_file_path, readonly, msg = check_readonly_formats(image_file_path)
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
 
     if readonly:
         return msg, False
@@ -691,7 +720,7 @@ def phi3_vision(
     ]
 
     prompt = processor.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    inputs = processor(prompt, [img_base64_str], return_tensors="pt").to("cuda:0") 
+    inputs = processor(prompt, [img_base64_str], return_tensors="pt").to("cuda:0")
 
     generation_args = {
         "max_new_tokens": 500,
@@ -729,6 +758,7 @@ def setup_mlx_vlm(settings: dict) -> bool:
 
 def use_mlx_vlm(
         image_file_path: str,
+        extension: str,
         settings: dict,
         for_notes: bool = False,
         verbose: bool = False,
@@ -744,7 +774,7 @@ def use_mlx_vlm(
     if model is not None and processor is not None:
 
         # check if readonly
-        image_file_path, readonly, msg = check_readonly_formats(image_file_path)
+        image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
 
         if readonly:
             return msg, False

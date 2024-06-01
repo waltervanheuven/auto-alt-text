@@ -35,7 +35,10 @@ def num2str(the_max: int, n: int) -> str:
             else:
                 s = f"0{str(n)}"
     elif n < 10:
-        s = f"0{str(n)}"
+        if the_max < 10:
+            s = f"{str(n)}"
+        else:
+            s = f"0{str(n)}"        
 
     return s
 
@@ -48,7 +51,7 @@ def bool2str(b: bool) -> str:
     """ convert bool to str """
     return "True" if b else "False"
 
-def check_readonly_formats(image_file_path: str) -> Tuple[str, str, bool]:
+def check_readonly_formats(image_file_path: str, extension: str) -> Tuple[str, str, bool]:
     """
     Check if image format is WMF, WME, or PSD which can not be converted using the pillow library.
 
@@ -61,64 +64,67 @@ def check_readonly_formats(image_file_path: str) -> Tuple[str, str, bool]:
     new_image_file_path = image_file_path
     err: bool = False
 
-    with Image.open(image_file_path) as img:
-
-        if img.format in ['WMF', 'WME']:
-            msg = "A windows media format file."
-            readonly = True
-        elif img.format in ['PSD']:
-            msg = "An Adobe Photoshop file."
-            readonly = True
-
-        if readonly and img.format in ['WMF']:
-            # convert images to PNG
-            dirname:str = os.path.dirname(image_file_path)
-            basename:str = os.path.basename(image_file_path).split(".")[0]
-            new_image_file_path = os.path.join(os.path.dirname(image_file_path), f"{basename}.png")
-
-            print(f"Converting {img.format} to PNG...")
-            try:
-                # convert WMF to PNG using headless libreoffice
-                if platform.system() != "Windows":
-                    # convert using LibreOffice (headless)
-                    cmd:list[str] = ["soffice", "--headless", "--convert-to", "png", image_file_path, "--outdir", dirname]
-                    path_to_cmd = shutil.which(cmd[0])
-                    if path_to_cmd is not None:
-                        r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
-                    else:
-                        print("Warning, LibreOffice not installed.")
-                elif platform.system() == "Windows":
-                    # convert using magick
-                    cmd:list[str] = ["magick", "convert", image_file_path, new_image_file_path]
-                    path_to_cmd = shutil.which(cmd[0])
-                    if path_to_cmd is not None:
-                        r = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
-                    else:
-                        print("Warning, ImageMagick not installed.")
-            except subprocess.CalledProcessError as e:
-                msg = f"soffice CalledProcessError: {str(e)}"
-                err = True
-            except subprocess.TimeoutExpired as e:
-                msg = f"soffice TimeoutExpired: {str(e)}"
-                err = True
-            except OSError as e:
-                msg = f"soffice OSError, file does not exist?: {str(e)}"
-                err = True
-            #except Exception as e:
-            #    msg = f"soffice exception: {str(e)}"
-            #    err = True
-            else:
-                readonly = False
-
-            if err:
-                readonly = True
-                new_image_file_path = image_file_path
-                print(r.stderr, file=sys.stderr)
+    if extension in ['tiff', 'tif', 'wmf', 'wme', 'psd']:
+        err, readonly, new_image_file_path = convert_to_png(image_file_path, extension)
+        
+    if err:
+        readonly = True
+        new_image_file_path = image_file_path
+        print("Error", file=sys.stderr)
 
     if readonly:
-        print(f"Warning, unable to open '{img.format}' file. Replace image in powerpoint with PNG, TIFF, or JPEG version.")
+        print(f"Warning, unable to open '{extension}' file. Replace image in powerpoint with PNG, TIFF, or JPEG version.")
 
     return new_image_file_path, readonly, msg
+
+def convert_to_png(
+    image_file_path: str,
+    extension: str
+) -> Tuple[bool, bool, str]:
+    """ convert to PNG """
+    err: bool = False
+    readonly: bool = True
+    msg: str = ""
+
+    dirname: str = os.path.dirname(image_file_path)
+    basename: str = os.path.basename(image_file_path).split(".")[0]
+    new_image_file_path = os.path.join(os.path.dirname(image_file_path), f"{basename}.png")
+
+    print(f"Converting {extension} to PNG...")
+    try:
+        # convert WMF to PNG using headless libreoffice
+        if platform.system() != "Windows":
+            # convert using LibreOffice (headless)
+            cmd:list[str] = ["soffice", "--headless", "--convert-to", "png", image_file_path, "--outdir", dirname]
+            path_to_cmd = shutil.which(cmd[0])
+            if path_to_cmd is not None:
+                _ = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
+            else:
+                print("Warning, LibreOffice not installed.")
+        elif platform.system() == "Windows":
+            # convert using magick
+            cmd:list[str] = ["magick", "convert", image_file_path, new_image_file_path]
+            path_to_cmd = shutil.which(cmd[0])
+            if path_to_cmd is not None:
+                _ = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
+            else:
+                print("Warning, ImageMagick not installed.")
+    except subprocess.CalledProcessError as e:
+        msg = f"soffice CalledProcessError: {str(e)}"
+        err = True
+    except subprocess.TimeoutExpired as e:
+        msg = f"soffice TimeoutExpired: {str(e)}"
+        err = True
+    except OSError as e:
+        msg = f"soffice OSError, file does not exist?: {str(e)}"
+        err = True
+    else:
+        readonly = False
+
+    if err:
+        print(f"{msg}", file=sys.stderr)
+
+    return err, readonly, new_image_file_path
 
 def convert_img_to_jpg(
         image_file_path: str,
@@ -127,7 +133,7 @@ def convert_img_to_jpg(
     """ convert image file to jpg """
     
     with Image.open(image_file_path) as img:
-        if img.format != 'JPEG':
+        if img.format.upper() != 'JPEG':
             # convert if not already in jpg
             basename: str = os.path.basename(image_file_path).split(".")[0]
             jpeg_image_file_path = os.path.join(os.path.dirname(image_file_path), f"{basename}.jpg")

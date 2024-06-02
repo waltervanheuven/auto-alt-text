@@ -45,7 +45,7 @@ def process_images_from_pptx(
 
     # Initialize presentation object
     if verbose:
-        print(f"Reading '{file_path}'")
+        print(f"Reading PowerPoint file: '{file_path}'")
     prs:Presentation = Presentation(file_path)
 
     model_str:str = settings['model']

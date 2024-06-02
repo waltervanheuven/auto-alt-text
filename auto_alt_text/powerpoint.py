@@ -923,7 +923,7 @@ def export_slides_to_images(
 
         # export from PDF to PNG
         if verbose:
-            print("Converting each page to PNG...")
+            print("Converting each slide to a single image...")
         if platform.system() == "Darwin":
             the_files = os.listdir(path_to_folder_to_save)
             for f in the_files:
@@ -968,16 +968,9 @@ def export_slides_to_images(
 
         # remove exported PDF file
         os.remove(pdf_file)
-        
-        if verbose:
-            print(f"Slides saved as PNG images in folder: '{path_to_folder_to_save}'")
     else:
         err = True
-        print("Unable to convert PPTX to images.", file = sys.stderr)
-
-    #if not err:
-    #    # generate pptx from slide images
-    #    images_to_pptx(path_to_folder_to_save, f"{pptx_name}_slides.pptx")
+        print("Unable to convert slides to images.", file = sys.stderr)
 
     return err
 

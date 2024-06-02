@@ -661,7 +661,7 @@ def use_ollama(
             else:
                 alt_text = json_out["response"]
                 # remove newlines
-                alt_text = alt_text.replace("\n", " ")
+                # alt_text = alt_text.replace("\n", " ")
                 # remove double spaces
                 alt_text = alt_text.replace("  ", " ")
     else:
@@ -795,7 +795,7 @@ def use_mlx_vlm(
 
         output = generate(model, processor, img_base64_str, prompt, verbose=False)
 
-        output = output.replace("\n", "")
+        #output = output.replace("\n", "")
         output = output.replace("</s>", "")
         alt_text = output
 

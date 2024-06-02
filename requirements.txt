@@ -12,3 +12,4 @@ accelerate
 pytictoc
 flash_attn; platform_system == "Windows"
 mlx_vlm; platform_system == "Darwin"
+pandas

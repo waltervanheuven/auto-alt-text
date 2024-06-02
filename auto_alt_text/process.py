@@ -5,9 +5,10 @@ import os
 import sys
 import argparse
 import platform
-import csv
 import pathlib
 import torch
+import pandas as pd
+import json
 from pytictoc import TicToc
 from .powerpoint import process_shape, process_shapes_from_file, export_slides_to_images
 from .powerpoint import add_presenter_note, remove_presenter_notes, export_presenter_notes
@@ -55,12 +56,12 @@ def process_images_from_pptx(
     if not report:
         # generate alt text
         if settings["use_mlx_vlm"]:
-            out_file_name = os.path.join(dirname, f"{pptx_name}_{model_str.replace('/', '_')}.txt")
+            out_file_name = os.path.join(dirname, f"{pptx_name}_{model_str.replace('/', '_')}.json")
         else:
-            out_file_name = os.path.join(dirname, f"{pptx_name}_{model_str.replace(':', '_')}.txt")
+            out_file_name = os.path.join(dirname, f"{pptx_name}_{model_str.replace(':', '_')}.json")
     elif report:
         # just report
-        out_file_name = os.path.join(dirname, f"{pptx_name}.txt")
+        out_file_name = os.path.join(dirname, f"{pptx_name}.json")
 
     pptx_nslides:int = len(prs.slides)
 
@@ -89,59 +90,68 @@ def process_images_from_pptx(
         'slide_image_cnt': 0
     }
 
-    # open file for writing
-    with open(out_file_name, "w", encoding="utf-8") as fout:
-        # store fout
-        pptx["fout"] = fout
+    # create pandas dataframe to store alt-text data
+    col_names = ['Model', 'File', 'Slide', 'ObjectName', 'ObjectType', 'PartOfGroup', 'Alt_Text', 'LenAltText', 'PresenterNotes', 'Decorative', 'PictFilePath']
+    df = pd.DataFrame(columns=col_names)
+    pptx['df'] = df
 
-        # write header
-        fout.write("Model\tFile\tSlide\tObjectName\tObjectType\tPartOfGroup\tAlt_Text\tLenAltText\tPresenterNotes\tDecorative\tPictFilePath\n")
+    image_cnt:int = 0
 
-        # total number of images in the pptx
-        image_cnt:int = 0
+    # Loop through slides
+    for slide_cnt, slide in enumerate(prs.slides, start = 0):
+        pptx["slide_cnt"] = slide_cnt
+        pptx["current_slide"] = slide
+        if verbose:
+            print(f"---- Slide: {slide_cnt + 1} ----")
 
-        # Loop through slides
-        for slide_cnt, slide in enumerate(prs.slides, start = 0):
-            pptx["slide_cnt"] = slide_cnt
-            pptx["current_slide"] = slide
-            if verbose:
-                print(f"---- Slide: {slide_cnt + 1} ----")
+        # loop through shapes
+        pptx["slide_image_cnt"] = 0
+        for shape in slide.shapes:
+            err = process_shape(shape, pptx, settings, verbose, debug)
+            if err:
+                break
 
-            # loop through shapes
-            pptx["slide_image_cnt"] = 0
-            for shape in slide.shapes:
-                err = process_shape(shape, pptx, settings, verbose, debug)
-                if err:
-                    break
-
-            if settings["add_to_notes"] and (pptx["slide_image_cnt"] > 0 or (pptx["object_list"] is not None)):
-                # only add presenter note if there is at least one image or object on the slide
-                err = add_presenter_note(file_path, pptx, settings, verbose)
-            elif settings["add_to_notes_all_slides"]:
-                # add description of slide to notes
-                err = add_presenter_note(file_path, pptx, settings, verbose)
-            else:
-                # remove current presenter note
-                slide = pptx["current_slide"]
+        if settings["add_to_notes"] and (pptx["slide_image_cnt"] > 0 or (pptx["object_list"] is not None)):
+            # only add presenter note if there is at least one image or object on the slide
+            err = add_presenter_note(file_path, pptx, settings, verbose)
+        elif settings["add_to_notes_all_slides"]:
+            # add description of slide to notes
+            err = add_presenter_note(file_path, pptx, settings, verbose)
+        else:
+            slide = pptx["current_slide"]
+            # keep or remove current presenter note
+            if not report and not settings['keep_presenter_notes']:
                 slide.notes_slide.notes_text_frame.text = ""
 
-                fout = pptx['fout']
-                model_str = settings['model']
-                pptx_extension = pptx['pptx_extension']
-                alt_text = ""
-                presenter_notes = slide.notes_slide.notes_text_frame.text
-                if not isinstance(presenter_notes, str):
-                    presenter_notes = ""
-                
-                slide_image_file_path = get_slide_img_path(file_path, pptx)
-                # check if exists because when creating accessibility report image might not 
-                # yet have been created
-                if not os.path.isfile(slide_image_file_path):
-                    slide_image_file_path = ""
+            #fout = pptx['fout']
+            model_str = settings['model']
+            pptx_extension = pptx['pptx_extension']
+            alt_text = ""
+            presenter_notes = slide.notes_slide.notes_text_frame.text
+            if not isinstance(presenter_notes, str):
+                presenter_notes = ""
+            
+            slide_image_file_path = get_slide_img_path(file_path, pptx)
+            # check if exists because when creating accessibility report image might not 
+            # yet have been created
+            if not os.path.isfile(slide_image_file_path):
+                slide_image_file_path = ""
 
-                fout.write(
-                    f"{model_str}\t{pptx_name}{pptx_extension}\t{pptx["slide_cnt"] + 1}\tSlide\t\t\t{alt_text}\t{len(alt_text)}\t{presenter_notes}\tFalse\t{slide_image_file_path}\n"
-                )
+            df = pptx['df']
+            df.loc[len(df)] = [
+                model_str,
+                f"{pptx_name}{pptx_extension}",
+                pptx["slide_cnt"] + 1,
+                "Slide",
+                "",
+                "",
+                alt_text,
+                len(alt_text),
+                presenter_notes,
+                False,
+                slide_image_file_path
+            ]
+            pptx['df'] = df
 
             # if err break out slide loop
             if err:
@@ -157,6 +167,10 @@ def process_images_from_pptx(
             yield slide_cnt + 1
 
     if not err:
+        # write to json
+        df = pptx['df']
+        df.to_json(out_file_name, orient='records', lines=True)
+
         if verbose:
             print("---------------------")
             print()
@@ -180,7 +194,7 @@ def process_images_from_pptx(
         # accessibility report
         print("---- Accessibility report --------------------------------------------")
 
-        report = accessibility_report(out_file_name, pptx_file, debug)
+        report = accessibility_report(df, pptx_file, debug)
         for l in report:
             print(l)
 
@@ -188,12 +202,13 @@ def process_images_from_pptx(
 
     return err
 
-def accessibility_report(out_file_name: str, pptx_name: str, debug:bool = False) -> List[str]:
+#def accessibility_report(out_file_name: str, pptx_name: str, debug:bool = False) -> List[str]:
+def accessibility_report(df: pd.DataFrame, pptx_name: str, debug:bool = False) -> List[str]:
     """
     Create accessibility report based on infomation in the text file generated
     """
     lines = []
-    lines.append(f"PowerPoint file: '{pptx_name}'")
+    lines.append(f"PowerPoint file: '{pptx_name}'\n")
 
     empty_alt_txt: int = 0
     empty_slide_presenter_notes: int = 0
@@ -201,99 +216,91 @@ def accessibility_report(out_file_name: str, pptx_name: str, debug:bool = False)
     img_cnt: int = 0
     img_decorative_cnt: int = 0
     slide_cnt: int = 0
+    group_cnt: int = 0
+    other_objects: int = 0
 
-    with open(out_file_name, "r", encoding="utf-8") as file:
-        # tab delimited file
-        csv_reader = csv.reader(file, delimiter="\t")
+    for i in range(len(df)):
+        row = df.iloc[i]
+        
+        if row['ObjectType'] == "Picture":
+            if not row['Decorative']:  #str2bool(row[9]):
+                if row['LenAltText'] == 0:
+                    # not decorative
+                    empty_alt_txt += 1
+                
+                img_cnt += 1
 
-        # skip header
-        next(csv_reader)
-
-        # process rows
-        for row in csv_reader:
-            if len(row) == 11:
-                if row[4] == "Picture" and not str2bool(row[9]):
-                    if int(row[7]) == 0:
-                        # not decorative
-                        empty_alt_txt += 1
-                    
-                    # create list of alt text length
-                    alt_text_list.append(int(row[7]))
-
-                if row[4] == "Picture" and str2bool(row[9]):
-                    img_decorative_cnt += 1
-                if row[4] == "Picture":
-                    img_cnt += 1
-                if row[3] == "Slide":
-                    slide_cnt += 1
-                    if len(row[8]) == 0:
-                        empty_slide_presenter_notes += 1
-
-            elif len(row) != 11:
-                lines.append(f"Unexpected row length: {len(row)}, row: {row}")
+                # create list of alt text length
+                alt_text_list.append(row['LenAltText'])
+            else:
+                img_decorative_cnt += 1
+        elif row['ObjectType'] == "Group":
+            group_cnt += 1
+        elif row['ObjectType'] == "" and row['ObjectName'] == "Slide":
+            slide_cnt += 1
+            if len(row['PresenterNotes']) == 0:
+                empty_slide_presenter_notes += 1
+        else:
+            other_objects += 1
 
     lines.append(f"Slides: {slide_cnt}")
+    lines.append(f"Elements: {len(df)}\n")
     lines.append(f"Images: {img_cnt}")
     lines.append(f"Decorative Images: {img_decorative_cnt}")
-    lines.append(f"Objects: {csv_reader.line_num - 1}")
+    lines.append(f"Groups: {group_cnt}")
+    lines.append(f"Other Object: {other_objects}\n")
 
-    lines.append(f"Number of missing Alt Text for non-decorative images: {empty_alt_txt}")
+    lines.append(f"Number of missing Alt Text for non-decorative Images: {empty_alt_txt}")
     if len(alt_text_list) > 0:
-        lines.append(f"Min alt text length: {min(alt_text_list)}")
-        lines.append(f"Max alt text length: {max(alt_text_list)}")
+        lines.append(f"Min Alt Text length: {min(alt_text_list)}")
+        lines.append(f"Max Alt Text length: {max(alt_text_list)}")
 
-    lines.append(f"Number of slides without presenter notes: {empty_slide_presenter_notes}")
+    lines.append(f"\nNumber of Slides without Presenter Notes: {empty_slide_presenter_notes}")
 
     return lines
 
 
-def replace_alt_texts(file_path: str, file_path_txt_file: str, debug:bool = False) -> bool:
+def replace_alt_texts(file_path: str, file_path_json_file: str, verbose: bool = False, debug:bool = False) -> bool:
     """
     Replace alt texts specified in a text file (e.g. generated by this script and edited to correct or improve)
     Text file should have a header and the same columns as the output files generated by this script
     """
     err:bool = False
 
-    # Check if text file is exists
-    if not os.path.isfile(file_path_txt_file):
-        print(f"Unable to access file: {file_path_txt_file}")
-        return False
-
     # get name, extension, folder from Powerpoint file
     name:str = pathlib.Path(file_path).stem
     extension:str = pathlib.Path(file_path).suffix
     dirname:str = os.path.dirname(file_path)
 
-    # process txt file
-    print(f"Reading: {file_path_txt_file}...")
-    csv_rows:list[str] = []
-    with open(file_path_txt_file, "r", encoding="utf-8") as file:
-        # assume tab delimited file
-        csv_reader = csv.reader(file, delimiter="\t")
-
-        # skip header
-        next(csv_reader)
-
-        for row in csv_reader:
-            csv_rows.append(row)
-
-    # process powerpoint file
-    print(f"Processing Powerpoint file: {file_path}")
-    prs = Presentation(file_path)
-
-    # Loop through slides
-    object_cnt:int = 0
-    for slide_cnt, slide in enumerate(prs.slides):
-        # loop through shapes
-        slide_object_cnt = 0
-        for shape in slide.shapes:
-            _, object_cnt, slide_object_cnt = process_shapes_from_file(shape, None, csv_rows, slide_cnt, slide_object_cnt, object_cnt, verbose, debug)
+    df = pd.read_json(file_path_json_file, orient='records', lines=True)
 
     if not err:
-        # Save file
-        outfile:str = os.path.join(dirname, f"{name}_alt_text{extension}")
-        print(f"Saving Powerpoint file with new alt-text to: '{outfile}'")
-        prs.save(outfile)
+        # process powerpoint file
+        print(f"Processing Powerpoint file: {file_path}")
+        prs = Presentation(file_path)
+
+        # Loop through slides
+        object_cnt:int = 1
+        for slide_cnt, slide in enumerate(prs.slides, start = 1):
+
+            # subset of df with objects in the Slide
+            df_slide = df[ (df['Slide'] == slide_cnt) & (df['ObjectName'] != 'Slide')  & (df['ObjectType'] == 'Picture') ]
+            print(f"slide_cnt: {slide_cnt}, len df: {len(df_slide)}, slide.shapes: {len(slide.shapes)}")
+            print(df_slide.to_string())
+
+            if len(df_slide) > 0:
+                # loop through shapes
+                slide_object_cnt = 0
+                for shape in slide.shapes:
+                    _, object_cnt, slide_object_cnt = process_shapes_from_file(shape, None, df_slide, slide_cnt, slide_object_cnt, object_cnt, verbose, debug)
+            else:
+                print("0 elements")
+
+        if not err:
+            # Save file
+            outfile:str = os.path.join(dirname, f"{name}_alt_text{extension}")
+            print(f"Saving Powerpoint file with new alt-text to: '{outfile}'")
+            prs.save(outfile)
 
     return err
 
@@ -331,8 +338,10 @@ def process_pptx() -> int:
     parser.add_argument("--prompt_notes", type=str, default="", help="custom prompt for presenter notes")
     #
     #parser.add_argument("--save", action='store_true', default=False, help="flag to save powerpoint file with updated alt texts")
-    parser.add_argument("--replace", type=str, default="", help="replace alt texts in pptx with those specified in file")
-    parser.add_argument("--replace_presenter_notes", action='store_true', default=True, help="replace or add to existing")
+    #
+    parser.add_argument("--keep_presenter_notes", action='store_true', default=False, help="replace or add to existing")
+    #
+    parser.add_argument("--replace", type=str, default="", help="replace alt texts in pptx with those specified in json file")
     parser.add_argument("--remove_presenter_notes", action='store_true', default=False, help="remove all presenter notes from powerpoint file")
     parser.add_argument("--export_presenter_notes", action='store_true', default=False, help="export presenter notes")
     parser.add_argument("--export_slides", action='store_true', default=False, help="export pptx slides to png images")
@@ -419,14 +428,14 @@ def process_pptx() -> int:
             "prompt": prompt,
             "prompt_notes": prompt_presenter_notes,
             "img_size": int(args.resize),
-            "replace_presenter_notes": args.replace_presenter_notes,
+            "keep_presenter_notes": args.keep_presenter_notes,
             "add_to_notes": args.add_to_notes,
             "add_to_notes_all_slides": args.add_to_notes_all_slides
         }
 
         if args.replace != "":
             # file with alt text provided
-            err = replace_alt_texts(powerpoint_file_name, args.replace, args.debug)
+            err = replace_alt_texts(powerpoint_file_name, args.replace, args.verbose, args.debug)
         elif args.remove_presenter_notes:
             err = remove_presenter_notes(powerpoint_file_name, args.verbose)
         elif args.export_presenter_notes:

@@ -7,6 +7,7 @@ import io
 import platform
 import pathlib
 import subprocess
+import pandas as pd
 from PIL import Image
 from pptx.util import Cm
 from pptx.oxml.ns import _nsmap
@@ -148,9 +149,23 @@ def process_shape(
                 else:
                     print(f"Slide: {slide_cnt + 1}, Group: {group_shape.name}, alt_text: '{stored_alt_text}'")
 
-            fout = pptx["fout"]
-            fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{group_shape.name}\tGroup\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t\t{bool2str(decorative)}\t{image_file_path}\n")
-
+            #fout = pptx["fout"]
+            #fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{group_shape.name}\tGroup\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t\t{bool2str(decorative)}\t{image_file_path}\n")
+            df = pptx['df']
+            df.loc[len(df)] = [
+                model_str,
+                f"{pptx_name}{pptx_extension}",
+                slide_cnt + 1,
+                group_shape.name,
+                "Group",
+                part_of_group,
+                stored_alt_text,
+                len(stored_alt_text),
+                "",
+                decorative,
+                image_file_path
+            ]
+            pptx['df'] = df
             # remove last one
             group_shape_list = pptx["group_shape_list"]
             pptx["group_shape_list"] = group_shape_list[:-1]
@@ -185,9 +200,24 @@ def process_shape(
                 model_str:str = settings["model"]
                 pptx_name:str = pptx["pptx_name"]
                 pptx_extension:str = pptx["pptx_extension"]
-                fout = pptx["fout"]
-                fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\tPicture\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t\t{bool2str(decorative)}\t{image_file_path}\n")
+                #fout = pptx["fout"]
+                #fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\tPicture\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t\t{bool2str(decorative)}\t{image_file_path}\n")
 
+                df = pptx['df']
+                df.loc[len(df)] = [
+                    model_str,
+                    f"{pptx_name}{pptx_extension}",
+                    slide_cnt + 1,
+                    shape.name,
+                    "Picture",
+                    part_of_group,
+                    stored_alt_text,
+                    len(stored_alt_text),
+                    "",
+                    decorative,
+                    image_file_path
+                ]
+                pptx['df'] = df
                 pptx["slide_image_cnt"] = slide_image_cnt + 1
 
     elif shape.shape_type in [MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.LINE, MSO_SHAPE_TYPE.FREEFORM, \
@@ -401,8 +431,23 @@ def process_object(
     model_str:str = settings["model"]
     pptx_name:str = pptx["pptx_name"]
     pptx_extension:str = pptx["pptx_extension"]
-    fout = pptx["fout"]
-    fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\t{shape_type2str(shape.shape_type)}\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t\t{bool2str(decorative)}\t{image_file_path}\n")
+    #fout = pptx["fout"]
+    #fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{shape.name}\t{shape_type2str(shape.shape_type)}\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t\t{bool2str(decorative)}\t{image_file_path}\n")
+    df = pptx['df']
+    df.loc[len(df)] = [
+        model_str,
+        f"{pptx_name}{pptx_extension}",
+        slide_cnt + 1,
+        shape.name,
+        shape_type2str(shape.shape_type),
+        part_of_group,
+        stored_alt_text,
+        len(stored_alt_text),
+        "",
+        decorative,
+        image_file_path
+    ]
+    pptx['df'] = df
 
 def remove_newlines(txt:str) -> str:
     """ remove newlines and replace tabs with spaces """
@@ -545,29 +590,45 @@ def process_shape_and_generate_alt_text(
 def process_shapes_from_file(
         shape: BaseShape,
         group_shape_list: list[BaseShape],
-        csv_rows, slide_cnt: int,
+        df: pd.DataFrame, 
+        slide_cnt: int,
         slide_object_cnt: int,
         object_cnt: int,
         verbose: bool = False,
         debug: bool = False
     ) -> Tuple[list[BaseShape], int, int]:
+
     """ recursive function to process shapes and shapes within groups """
+    
+    row = df.iloc[slide_object_cnt]
+
+    if debug:
+        print(f"slide_cnt: {slide_cnt}, slide_object_cnt: {slide_object_cnt}")
+        print(f"row['ObjectType'] {row['ObjectType']}")
+    
     # Check if the shape has a picture
-    if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+    if shape.shape_type == MSO_SHAPE_TYPE.GROUP and row['ObjectType'] == "Group":
+
         if group_shape_list is None:
             group_shape_list = [shape]
         else:
             group_shape_list.append(shape)
 
         for embedded_shape in shape.shapes:
-            group_shape_list, object_cnt, slide_object_cnt = process_shapes_from_file(embedded_shape, group_shape_list, csv_rows, slide_cnt, slide_object_cnt, object_cnt, verbose, debug)
+            slide_object_cnt += 1
+            object_cnt += 1
+
+            group_shape_list, object_cnt, slide_object_cnt = process_shapes_from_file(embedded_shape, group_shape_list, df, slide_cnt, slide_object_cnt, object_cnt, verbose, debug)
+
+        if debug:
+            print(f"> slide_cnt: {slide_cnt}, slide_object_cnt: {slide_object_cnt}")
 
         # current group shape (last one)
         group_shape = group_shape_list[-1]
 
         # get decorative
         decorative_pptx:bool = is_decorative(group_shape)
-        decorative:bool = str2bool(csv_rows[object_cnt][8])
+        decorative:bool = row['Decorative']
 
         # change decorative status
         if decorative_pptx != decorative:
@@ -578,11 +639,12 @@ def process_shapes_from_file(
         if not decorative:
             # get alt text from text file
             # print(f"Set to {csv_rows[image_cnt][6]}")
-            alt_text = csv_rows[object_cnt][6]
+            alt_text = row['Alt_Text']
 
         # set alt text
         if debug:
             print(f"Set group to {alt_text}")
+
         set_alt_text(group_shape, alt_text)
 
         slide_object_cnt += 1
@@ -591,11 +653,11 @@ def process_shapes_from_file(
         # remove last one
         group_shape_list = group_shape_list[:-1]
 
-    elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+    elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE and row['ObjectType'] == "Picture":
 
         # get decorative
         decorative_pptx:bool = is_decorative(shape)
-        decorative:bool = str2bool(csv_rows[object_cnt][8])
+        decorative:bool = row['Decorative']
 
         # change decorative status
         if decorative_pptx != decorative:
@@ -605,7 +667,9 @@ def process_shapes_from_file(
         alt_text: str = ""
         if not decorative:
             # get alt text from text file
-            alt_text = csv_rows[object_cnt][6]
+            alt_text = row['Alt_Text']
+
+        print(f"alt-text: {alt_text}")
 
         # set alt text
         set_alt_text(shape, alt_text)
@@ -622,7 +686,7 @@ def process_shapes_from_file(
 
         # get decorative
         decorative_pptx:bool = is_decorative(shape)
-        decorative:bool = str2bool(csv_rows[object_cnt][8])
+        decorative:bool = row['Decorative']
 
         # change decorative status
         if decorative_pptx != decorative:
@@ -632,7 +696,7 @@ def process_shapes_from_file(
         alt_text: str = ""
         if not decorative:
             # get alt text from text file
-            alt_text = csv_rows[object_cnt][6]
+            alt_text = row['Alt_Text']
 
         # set alt text
         set_alt_text(shape, alt_text)
@@ -640,10 +704,10 @@ def process_shapes_from_file(
         slide_object_cnt += 1
         object_cnt += 1
 
-    elif shape.shape_type == MSO_SHAPE_TYPE.TEXT_BOX:
+    elif shape.shape_type == MSO_SHAPE_TYPE.TEXT_BOX and row['ObjectType'] == "TextBox":
 
         decorative_pptx:bool = is_decorative(shape)
-        decorative:bool = str2bool(csv_rows[object_cnt][8])
+        decorative:bool = row['Decorative']
 
         # change decorative status
         if decorative_pptx != decorative:
@@ -653,10 +717,13 @@ def process_shapes_from_file(
         alt_text: str = ""
         if not decorative:
             # get alt text from text file
-            alt_text = csv_rows[object_cnt][6]
+            alt_text = row['Alt_Text']
 
         # set alt text
         set_alt_text(shape, alt_text)
+
+        slide_object_cnt += 1
+        object_cnt += 1
 
     return group_shape_list, object_cnt, slide_object_cnt
 
@@ -674,22 +741,33 @@ def add_presenter_note(
     if os.path.isfile(slide_image_file_path):
         presenter_notes, err = generate_description(slide_image_file_path, ".png", settings, for_notes=True, verbose=verbose)
         slide = pptx["current_slide"]
-        
-        if settings['replace_presenter_notes']:
-            slide.notes_slide.notes_text_frame.text = presenter_notes
-        else:
-            slide.notes_slide.notes_text_frame.text = f"{presenter_notes}{slide.notes_slide.notes_text_frame.text}"
+
+        if settings['keep_presenter_notes']:
+            # place new presenter notes before old ones
+            presenter_notes = f"{presenter_notes}\n\n{slide.notes_slide.notes_text_frame.text}"
+
+        slide.notes_slide.notes_text_frame.text = presenter_notes
 
         if verbose:
-            print(f"Slide: {pptx["slide_cnt"] + 1}\t{presenter_notes}")
+            print(f"Slide: {pptx["slide_cnt"] + 1}\t{slide.notes_slide.notes_text_frame.text}")
 
-        fout = pptx['fout']
         model_str = settings['model']
         pptx_extension = pptx['pptx_extension']
-        fout.write(
-            f"{model_str}\t{pathlib.Path(pptx_path).stem}{pptx_extension}\t{pptx["slide_cnt"] + 1}\tSlide\t\t\t\t\t{presenter_notes}\tFalse\t{slide_image_file_path}\n"
-        )
-
+        df = pptx['df']
+        df.loc[len(df)] = [
+            model_str,
+            f"{pathlib.Path(pptx_path).stem}{pptx_extension}",
+            pptx['slide_cnt'] + 1,
+            "Slide",
+            "",
+            "",
+            "",
+            0,
+            presenter_notes,
+            False,
+            slide_image_file_path
+        ]
+        pptx['df'] = df
     else:
         print(f"Unable to access image file: {slide_image_file_path}", file=sys.stderr)
         err = True

@@ -891,14 +891,15 @@ def export_slides_to_images(
             presentation.Close()
             powerpoint.Quit()
             if verbose:
-                print(f"Slides saved as PNG images in folder: '{abs_path_to_folder_to_save}'")
+                print("Slides saved as images")
         except ImportError as e:
             print(f"Unable to export slides: {str(e)}", file=sys.stderr)
             err = True
 
     elif platform.system() != "Windows":
         # export PPTX first to PDF
-        #print("Exporting to PDF...")
+        if verbose:
+            print("Converting PowerPoint to PDF...")
 
         cmd:list[str] = ["soffice", "--headless", "--convert-to", "pdf", pptx_path, "--outdir", path_to_folder_to_save]
         try:
@@ -924,6 +925,7 @@ def export_slides_to_images(
         # export from PDF to PNG
         if verbose:
             print("Converting each slide to a single image...")
+
         if platform.system() == "Darwin":
             the_files = os.listdir(path_to_folder_to_save)
             for f in the_files:

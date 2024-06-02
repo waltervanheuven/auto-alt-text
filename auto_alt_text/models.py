@@ -642,6 +642,9 @@ def use_ollama(
         except requests.exceptions.ConnectionError:
             print(f"ConnectionError: Unable to access the server at: '{ollama_url}'", file=sys.stderr)
             err = True
+        except requests.exceptions.ReadTimeout:
+            print("ReadTimeout", file=sys.stderr)
+            err = True
         except requests.exceptions.HTTPError:
             print("HTTPError", file=sys.stderr)
             err = True

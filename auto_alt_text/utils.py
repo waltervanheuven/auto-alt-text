@@ -38,7 +38,7 @@ def num2str(the_max: int, n: int) -> str:
         if the_max < 10:
             s = f"{str(n)}"
         else:
-            s = f"0{str(n)}"        
+            s = f"0{str(n)}"
 
     return s
 
@@ -51,7 +51,11 @@ def bool2str(b: bool) -> str:
     """ convert bool to str """
     return "True" if b else "False"
 
-def check_readonly_formats(image_file_path: str, extension: str) -> Tuple[str, str, bool]:
+def check_readonly_formats(
+        image_file_path: str,
+        extension: str,
+        verbose: bool = False
+    ) -> Tuple[str, str, bool]:
     """
     Check if image format is WMF, WME, or PSD which can not be converted using the pillow library.
 
@@ -65,21 +69,23 @@ def check_readonly_formats(image_file_path: str, extension: str) -> Tuple[str, s
     err: bool = False
 
     if extension in ['tiff', 'tif', 'wmf', 'wme', 'psd']:
-        err, readonly, new_image_file_path = convert_to_png(image_file_path, extension)
-        
+        err, readonly, new_image_file_path = convert_to_png(image_file_path, extension, verbose)
+
     if err:
         readonly = True
         new_image_file_path = image_file_path
         print("Error", file=sys.stderr)
 
     if readonly:
-        print(f"Warning, unable to open '{extension}' file. Replace image in powerpoint with PNG, TIFF, or JPEG version.")
+        print(f"Unable to open file: '{image_file_path}'.\
+              Replace image in powerpoint with PNG, TIFF, or JPEG version.", file=sys.stderr)
 
     return new_image_file_path, readonly, msg
 
 def convert_to_png(
     image_file_path: str,
-    extension: str
+    extension: str,
+    verbose: bool
 ) -> Tuple[bool, bool, str]:
     """ convert to PNG """
     err: bool = False
@@ -90,15 +96,30 @@ def convert_to_png(
     basename: str = os.path.basename(image_file_path).split(".")[0]
     new_image_file_path = os.path.join(os.path.dirname(image_file_path), f"{basename}.png")
 
-    print(f"Converting {extension} to PNG...")
+    if verbose:
+        print(f"Converting {extension} to PNG...")
     try:
         # convert WMF to PNG using headless libreoffice
         if platform.system() != "Windows":
             # convert using LibreOffice (headless)
-            cmd:list[str] = ["soffice", "--headless", "--convert-to", "png", image_file_path, "--outdir", dirname]
+            cmd:list[str] = [
+                "soffice",
+                "--headless",
+                "--convert-to",
+                "png",
+                image_file_path,
+                "--outdir",
+                dirname
+            ]
             path_to_cmd = shutil.which(cmd[0])
             if path_to_cmd is not None:
-                _ = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
+                _ = subprocess.run(
+                        cmd,
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        shell=False,
+                        check=True
+                    )
             else:
                 print("Warning, LibreOffice not installed.")
         elif platform.system() == "Windows":
@@ -106,7 +127,13 @@ def convert_to_png(
             cmd:list[str] = ["magick", "convert", image_file_path, new_image_file_path]
             path_to_cmd = shutil.which(cmd[0])
             if path_to_cmd is not None:
-                _ = subprocess.run(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False, check=True)
+                _ = subprocess.run(
+                        cmd,
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        shell=False,
+                        check=True
+                    )
             else:
                 print("Warning, ImageMagick not installed.")
     except subprocess.CalledProcessError as e:
@@ -131,7 +158,7 @@ def convert_img_to_jpg(
         verbose: bool = False,
     ) -> str:
     """ convert image file to jpg """
-    
+
     with Image.open(image_file_path) as img:
         if img.format.upper() != 'JPEG':
             # convert if not already in jpg

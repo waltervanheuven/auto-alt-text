@@ -76,7 +76,7 @@ def kosmos2(
     err:bool = False
 
     # check if readonly
-    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension, verbose)
     if readonly:
         return msg, False
 
@@ -180,7 +180,7 @@ def openclip(
     err: bool = False
 
     # check if readonly
-    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension, verbose)
     if readonly:
         return msg, False
 
@@ -265,7 +265,7 @@ def qwen_vl(
     err: bool = False
 
     # check if readonly
-    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension, verbose)
     if readonly:
         return msg, False
 
@@ -382,7 +382,7 @@ def cog_vlm(
     err: bool = False
 
     # check if readonly
-    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension, verbose)
     if readonly:
         return msg, False
 
@@ -448,7 +448,7 @@ def use_openai(
     alt_text:str = "Error"
 
     # check if readonly
-    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension, verbose)
     if readonly:
         return msg, False
 
@@ -608,7 +608,7 @@ def use_ollama(
     alt_text: str = "Error"
 
     # check if readonly
-    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension, verbose)
     if readonly:
         return msg, False
 
@@ -699,7 +699,7 @@ def phi3_vision(
     err: bool = False
 
     # check if readonly
-    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
+    image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension, verbose)
 
     if readonly:
         return msg, False
@@ -777,7 +777,7 @@ def use_mlx_vlm(
     if model is not None and processor is not None:
 
         # check if readonly
-        image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension)
+        image_file_path, readonly, msg = check_readonly_formats(image_file_path, extension, verbose)
 
         if readonly:
             return msg, False

@@ -14,7 +14,7 @@ from pptx.oxml.ns import _nsmap
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.shapes.base import BaseShape
 from pptx import Presentation
-from .utils import num2str, str2bool, bool2str
+from .utils import num2str, bool2str
 from .models import kosmos2, openclip, qwen_vl, cog_vlm, phi3_vision
 from .models import use_ollama, use_openai, use_mlx_vlm
 
@@ -149,8 +149,6 @@ def process_shape(
                 else:
                     print(f"Slide: {slide_cnt + 1}, Group: {group_shape.name}, alt_text: '{stored_alt_text}'")
 
-            #fout = pptx["fout"]
-            #fout.write(f"{model_str}\t{pptx_name}{pptx_extension}\t{slide_cnt + 1}\t{group_shape.name}\tGroup\t{part_of_group}\t{stored_alt_text}\t{len(stored_alt_text)}\t\t{bool2str(decorative)}\t{image_file_path}\n")
             df = pptx['df']
             df.loc[len(df)] = [
                 model_str,
@@ -166,6 +164,7 @@ def process_shape(
                 image_file_path
             ]
             pptx['df'] = df
+
             # remove last one
             group_shape_list = pptx["group_shape_list"]
             pptx["group_shape_list"] = group_shape_list[:-1]
@@ -475,7 +474,7 @@ def cleanup_name_object(txt:str) -> str:
     return s
 
 def combine_images_in_group(
-        images, 
+        images,
         group_shape,
         verbose: bool = False
     ) -> Image:
@@ -590,7 +589,7 @@ def process_shape_and_generate_alt_text(
 def process_shapes_from_file(
         shape: BaseShape,
         group_shape_list: list[BaseShape],
-        df: pd.DataFrame, 
+        df: pd.DataFrame,
         slide_cnt: int,
         slide_object_cnt: int,
         object_cnt: int,
@@ -600,14 +599,8 @@ def process_shapes_from_file(
 
     """ recursive function to process shapes and shapes within groups """
     
-    row = df.iloc[slide_object_cnt]
-
-    if debug:
-        print(f"slide_cnt: {slide_cnt}, slide_object_cnt: {slide_object_cnt}")
-        print(f"row['ObjectType'] {row['ObjectType']}")
-    
     # Check if the shape has a picture
-    if shape.shape_type == MSO_SHAPE_TYPE.GROUP and row['ObjectType'] == "Group":
+    if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
 
         if group_shape_list is None:
             group_shape_list = [shape]
@@ -620,15 +613,15 @@ def process_shapes_from_file(
 
             group_shape_list, object_cnt, slide_object_cnt = process_shapes_from_file(embedded_shape, group_shape_list, df, slide_cnt, slide_object_cnt, object_cnt, verbose, debug)
 
-        if debug:
-            print(f"> slide_cnt: {slide_cnt}, slide_object_cnt: {slide_object_cnt}")
+        #if debug:
+        #    print(f"> slide_cnt: {slide_cnt}, slide_object_cnt: {slide_object_cnt}")
 
         # current group shape (last one)
         group_shape = group_shape_list[-1]
 
         # get decorative
         decorative_pptx:bool = is_decorative(group_shape)
-        decorative:bool = row['Decorative']
+        decorative:bool = False # row['Decorative']
 
         # change decorative status
         if decorative_pptx != decorative:
@@ -639,11 +632,11 @@ def process_shapes_from_file(
         if not decorative:
             # get alt text from text file
             # print(f"Set to {csv_rows[image_cnt][6]}")
-            alt_text = row['Alt_Text']
+            alt_text = "" #row['Alt_Text']
 
         # set alt text
-        if debug:
-            print(f"Set group to {alt_text}")
+        #if debug:
+        #    print(f"Set group to {alt_text}")
 
         set_alt_text(group_shape, alt_text)
 
@@ -653,25 +646,23 @@ def process_shapes_from_file(
         # remove last one
         group_shape_list = group_shape_list[:-1]
 
-    elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE and row['ObjectType'] == "Picture":
+    elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
 
-        # get decorative
-        decorative_pptx:bool = is_decorative(shape)
-        decorative:bool = row['Decorative']
+        row = df.loc[
+            (df['Slide'] == slide_cnt) &
+            (df['ObjectName'] == shape.name) &
+            (df['ObjectType'] == "Picture")
+        ]
+        if not row.empty:
+            alt_text = row.at[row.index[0], 'Alt_Text']
+            decorative = row.at[row.index[0], 'Decorative']
+        else:
+            alt_text = ""
+            decorative = False
 
-        # change decorative status
-        if decorative_pptx != decorative:
-            # set decorative status of image
-            print(f"Side: {slide_cnt}, {shape.name}, can't set the docorative status to: {bool2str(decorative)}", file=sys.stderr)
+        if decorative:
+            alt_text = ""
 
-        alt_text: str = ""
-        if not decorative:
-            # get alt text from text file
-            alt_text = row['Alt_Text']
-
-        print(f"alt-text: {alt_text}")
-
-        # set alt text
         set_alt_text(shape, alt_text)
 
         slide_object_cnt += 1
@@ -686,7 +677,7 @@ def process_shapes_from_file(
 
         # get decorative
         decorative_pptx:bool = is_decorative(shape)
-        decorative:bool = row['Decorative']
+        decorative:bool = False
 
         # change decorative status
         if decorative_pptx != decorative:
@@ -696,7 +687,7 @@ def process_shapes_from_file(
         alt_text: str = ""
         if not decorative:
             # get alt text from text file
-            alt_text = row['Alt_Text']
+            alt_text = "" # row['Alt_Text']
 
         # set alt text
         set_alt_text(shape, alt_text)
@@ -704,10 +695,10 @@ def process_shapes_from_file(
         slide_object_cnt += 1
         object_cnt += 1
 
-    elif shape.shape_type == MSO_SHAPE_TYPE.TEXT_BOX and row['ObjectType'] == "TextBox":
+    elif shape.shape_type == MSO_SHAPE_TYPE.TEXT_BOX:
 
         decorative_pptx:bool = is_decorative(shape)
-        decorative:bool = row['Decorative']
+        decorative:bool = False # row['Decorative']
 
         # change decorative status
         if decorative_pptx != decorative:
@@ -717,7 +708,7 @@ def process_shapes_from_file(
         alt_text: str = ""
         if not decorative:
             # get alt text from text file
-            alt_text = row['Alt_Text']
+            alt_text = "" # row['Alt_Text']
 
         # set alt text
         set_alt_text(shape, alt_text)

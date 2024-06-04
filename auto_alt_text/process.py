@@ -121,16 +121,15 @@ def process_images_from_pptx(
             if not report and not settings['keep_presenter_notes']:
                 slide.notes_slide.notes_text_frame.text = ""
 
-            #fout = pptx['fout']
             model_str = settings['model']
             pptx_extension = pptx['pptx_extension']
             alt_text = ""
             presenter_notes = slide.notes_slide.notes_text_frame.text
             if not isinstance(presenter_notes, str):
                 presenter_notes = ""
-            
+
             slide_image_file_path = get_slide_img_path(file_path, pptx)
-            # check if exists because when creating accessibility report image might not 
+            # check if exists because when creating accessibility report image might not
             # yet have been created
             if not os.path.isfile(slide_image_file_path):
                 slide_image_file_path = ""
@@ -200,7 +199,6 @@ def process_images_from_pptx(
 
     return err
 
-#def accessibility_report(out_file_name: str, pptx_name: str, debug:bool = False) -> List[str]:
 def accessibility_report(df: pd.DataFrame, pptx_name: str, debug:bool = False) -> List[str]:
     """
     Create accessibility report based on infomation in the text file generated
@@ -282,47 +280,47 @@ def replace_alt_texts(
         except FileNotFoundError:
             print(f"FileNotFoundError: '{file_path_json_file}'", file=sys.stderr)
             err = True
+    
+    if verbose:
+        print(f"Processing Powerpoint file: {file_path}")
+
+    prs = Presentation(file_path)
+
+    object_cnt:int = 1
+    for slide_cnt, slide in enumerate(prs.slides, start = 1):
+        slide_object_cnt = 0
+        for shape in slide.shapes:
+            _, object_cnt, slide_object_cnt = process_shapes_from_file(
+                                                shape,
+                                                None,
+                                                df,
+                                                slide_cnt,
+                                                slide_object_cnt,
+                                                object_cnt,
+                                                verbose,
+                                                debug
+                                            )
+
+        row = df.loc[
+            (df['Slide'] == slide_cnt) &
+            (df['ObjectName'] == "Slide") &
+            (df['ObjectType'] == "")
+        ]
+        if not row.empty:
+            presenter_notes = row.at[row.index[0], 'PresenterNotes']
+            slide.notes_slide.notes_text_frame.text = presenter_notes
         else:
+            print("Error, Slide presenter note not found", file=sys.stderr)
+            err = True
+
+    if not err:
+        if save_to_original:
+            prs.save(file_path)
+        else:
+            outfile:str = os.path.join(dirname, f"{name}_alt_text{extension}")
             if verbose:
-                print(f"Processing Powerpoint file: {file_path}")
-
-            prs = Presentation(file_path)
-
-            object_cnt:int = 1
-            for slide_cnt, slide in enumerate(prs.slides, start = 1):
-                slide_object_cnt = 0
-                for shape in slide.shapes:
-                    _, object_cnt, slide_object_cnt = process_shapes_from_file(
-                                                        shape,
-                                                        None,
-                                                        df,
-                                                        slide_cnt,
-                                                        slide_object_cnt,
-                                                        object_cnt,
-                                                        verbose,
-                                                        debug
-                                                    )
-                    
-                row = df.loc[
-                    (df['Slide'] == slide_cnt) &
-                    (df['ObjectName'] == "Slide") &
-                    (df['ObjectType'] == "")
-                ]
-                if not row.empty:
-                    presenter_notes = row.at[row.index[0], 'PresenterNotes']
-                    slide.notes_slide.notes_text_frame.text = presenter_notes
-                else:
-                    print("Error, Slide presenter note not found", file=sys.stderr)
-                    err = True
-
-            if not err:
-                if save_to_original:
-                    prs.save(file_path)
-                else:
-                    outfile:str = os.path.join(dirname, f"{name}_alt_text{extension}")
-                    if verbose:
-                        print(f"Saving Powerpoint file with new alt-text to: '{outfile}'")
-                    prs.save(outfile)
+                print(f"Saving Powerpoint file with new alt-text to: '{outfile}'")
+            prs.save(outfile)
 
     return err
 

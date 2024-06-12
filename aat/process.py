@@ -12,7 +12,7 @@ from pytictoc import TicToc
 from pptx import Presentation
 from .powerpoint import process_shape, process_shapes_from_file, export_slides_to_images
 from .powerpoint import add_presenter_note, remove_presenter_notes, export_presenter_notes
-from .powerpoint import get_slide_img_path
+from .powerpoint import get_slide_img_path, generate_description
 from .models import show_openclip_models, init_model
 
 def process_images_from_pptx(
@@ -89,14 +89,21 @@ def process_images_from_pptx(
     }
 
     # create pandas dataframe to store alt-text data
-    col_names = ['Model', 'File', 'Slide', 'ObjectName', 'ObjectType', 'PartOfGroup', 'Alt_Text', 'LenAltText', 'PresenterNotes', 'Decorative', 'PictFilePath']
+    col_names = ['Model', 'File', 'Slide', 'ShapeID', 'ObjectName', 'ObjectType', 'PartOfGroup', 'Alt_Text', \
+                 'LenAltText', 'PresenterNotes', 'Decorative', 'Complex', 'PictFilePath', 'Complex_Alt_Text']
     df = pd.DataFrame(columns=col_names)
     pptx['df'] = df
-
     image_cnt:int = 0
 
     # Loop through slides
-    for slide_cnt, slide in enumerate(prs.slides, start = 0):
+    print(f"Number of slides to process: {len(prs.slides)}")
+    slide_cnt = 0
+    for slide in prs.slides:
+
+        # skip hidden slides
+        if slide._element.get("show") == '0':
+            continue
+
         pptx["slide_cnt"] = slide_cnt
         pptx["current_slide"] = slide
         if verbose:
@@ -119,14 +126,29 @@ def process_images_from_pptx(
             slide = pptx["current_slide"]
             # keep or remove current presenter note
             if not report and not settings['keep_presenter_notes']:
-                slide.notes_slide.notes_text_frame.text = ""
+                if slide.notes_slide.notes_text_frame is not None:
+                    slide.notes_slide.notes_text_frame.text = ""
+                else:
+                    print(f"Unable to set slide notes: {slide_cnt + 1}", file=sys.stderr)
 
             model_str = settings['model']
             pptx_extension = pptx['pptx_extension']
             alt_text = ""
-            presenter_notes = slide.notes_slide.notes_text_frame.text
-            if not isinstance(presenter_notes, str):
-                presenter_notes = ""
+            presenter_notes = ""
+            #if slide.notes_slide.notes_text_frame is not None:
+            if slide.has_notes_slide:
+                if slide.notes_slide.notes_text_frame is not None:
+                    presenter_notes = slide.notes_slide.notes_text_frame.text
+            else:
+                print(f"Unable to set presenter note of slide: {slide_cnt + 1}", file=sys.stderr)
+                notes_slide = slide.notes_slide
+                text_frame = notes_slide.notes_text_frame
+                if text_frame is not None:
+                    text_frame.text = presenter_notes
+                else:
+                    #text_frame = _BaseSlide.
+                    #text_frame.text = ""
+                    print("text frame error", file=sys.stderr)
 
             slide_image_file_path = get_slide_img_path(file_path, pptx)
             # check if exists because when creating accessibility report image might not
@@ -135,10 +157,12 @@ def process_images_from_pptx(
                 slide_image_file_path = ""
 
             df = pptx['df']
+            # default entry
             df.loc[len(df)] = [
                 model_str,
                 f"{pptx_name}{pptx_extension}",
                 pptx["slide_cnt"] + 1,
+                0,
                 "Slide",
                 "",
                 "",
@@ -146,7 +170,9 @@ def process_images_from_pptx(
                 len(alt_text),
                 presenter_notes,
                 False,
-                slide_image_file_path
+                False,
+                slide_image_file_path,
+                ""
             ]
             pptx['df'] = df
 
@@ -161,7 +187,10 @@ def process_images_from_pptx(
             pptx["text_list"] = None
 
             image_cnt += pptx["slide_image_cnt"]
-            yield slide_cnt + 1
+
+        yield slide_cnt + 1
+
+        slide_cnt += 1
 
     if not err:
         # write to json
@@ -255,11 +284,10 @@ def accessibility_report(df: pd.DataFrame, pptx_name: str, debug:bool = False) -
 
     return lines
 
-
-def replace_alt_texts(
+def update_pptx_df(
         file_path: str,
         file_path_json_file: str,
-        df: pd.DataFrame = None,
+        df = None,
         save_to_original: bool = False,
         verbose: bool = False,
         debug:bool = False
@@ -286,8 +314,14 @@ def replace_alt_texts(
 
     prs = Presentation(file_path)
 
-    object_cnt:int = 1
-    for slide_cnt, slide in enumerate(prs.slides, start = 1):
+    object_cnt: int = 1
+    slide_cnt: int = 1
+    for slide in prs.slides:
+
+        # skip hidden slides
+        if slide._element.get("show") == '0':
+            continue
+
         slide_object_cnt = 0
         for shape in slide.shapes:
             _, object_cnt, slide_object_cnt = process_shapes_from_file(
@@ -308,19 +342,58 @@ def replace_alt_texts(
         ]
         if not row.empty:
             presenter_notes = row.at[row.index[0], 'PresenterNotes']
-            slide.notes_slide.notes_text_frame.text = presenter_notes
+            if slide.notes_slide.notes_text_frame is not None:
+                slide.notes_slide.notes_text_frame.text = presenter_notes
+            else:
+                print(f"Error, unable to set presenter note of slide: {slide_cnt}", file=sys.stderr)
         else:
-            print("Error, Slide presenter note not found", file=sys.stderr)
-            err = True
+            print(f"Error, Slide presenter note not found on slide: {slide_cnt}", file=sys.stderr)
+
+        slide_cnt += 1
 
     if not err:
         if save_to_original:
+            if debug:
+                print(f"Save to {file_path}")
             prs.save(file_path)
         else:
             outfile:str = os.path.join(dirname, f"{name}_alt_text{extension}")
             if verbose:
                 print(f"Saving Powerpoint file with new alt-text to: '{outfile}'")
             prs.save(outfile)
+
+    return err
+
+def generate_alt_text_image(
+        image_file_path: str,
+        settings: dict,
+        verbose: bool = False,
+        debug:bool = False
+) -> bool:
+    """ generate alt text and save to text file """
+    name:str = pathlib.Path(image_file_path).stem
+    extension:str = pathlib.Path(image_file_path).suffix
+    dirname:str = os.path.dirname(image_file_path)
+
+    if debug:
+        print(f"Generating Alt Text for {image_file_path}")
+    alt_text, err = generate_description(
+        image_file_path,
+        extension,
+        settings,
+        for_notes=False,
+        verbose=verbose
+    )
+
+    if not err:
+        txt_file_path = os.path.join(dirname, f"{name}.txt")
+
+        with open(txt_file_path, 'w', encoding='utf-8') as file:
+            file.write(alt_text)
+
+        if debug:
+            print(f"alt text: {alt_text}")
+            print(f"Saving to file: {txt_file_path}")
 
     return err
 
@@ -331,8 +404,9 @@ def process_pptx() -> int:
     t = TicToc()
     t.tic()
 
-    parser = argparse.ArgumentParser(description='Add alt-text automatically to images and objects in Powerpoint')
-    parser.add_argument("file", type=str, help="Powerpoint file")
+    parser = argparse.ArgumentParser(description='Add Alt-Text automatically to images and objects in PowerPoint file')
+    parser.add_argument("--pptx", type=str, default="", help="PowerPoint file")
+    parser.add_argument("--image", type=str, default="", help="Image file")
     parser.add_argument("--report", action='store_true', default=False, help="flag to generate alt text report")
     parser.add_argument("--model", type=str, default="", help="kosmos-2, openclip, llava, gpt-4o, gpt-4-turbo, cogvlm, cogvlm2")
 
@@ -365,6 +439,7 @@ def process_pptx() -> int:
     parser.add_argument("--remove_presenter_notes", action='store_true', default=False, help="remove all presenter notes from powerpoint file")
     parser.add_argument("--export_presenter_notes", action='store_true', default=False, help="export presenter notes")
     parser.add_argument("--export_slides", action='store_true', default=False, help="export pptx slides to png images")
+    parser.add_argument("--complex_alt_text", type=str, default="", help="alt text to use for complex images")
     #
     parser.add_argument("--add_to_notes", action='store_true', default=False, help="add slide description to slide notes when images are present")
     parser.add_argument("--add_to_notes_all_slides", action='store_true', default=False, help="add description to each slide notes")
@@ -419,11 +494,18 @@ def process_pptx() -> int:
         prompt_presenter_notes = args.prompt_notes
 
     # Read PowerPoint file and list images
-    powerpoint_file_name = args.file
-    if not os.path.isfile(powerpoint_file_name):
-        print(f"Error: File {powerpoint_file_name} not found.", file=sys.stderr)
-        err = True
-    else:
+    powerpoint_file_name = args.pptx
+    image_file_name = args.image
+    if powerpoint_file_name != "" and image_file_name == "":
+        if not os.path.isfile(powerpoint_file_name):
+            print(f"Error: PowerPoint file {powerpoint_file_name} not found", file=sys.stderr)
+            err = True
+    elif powerpoint_file_name == "" and image_file_name == "":
+        if not os.path.isfile(powerpoint_file_name):
+            print(f"Error: Image file '{image_file_name}' not found.", file=sys.stderr)
+            err = True
+
+    if not err:
         settings:dict = {
             "report": args.report,
             "model": model_str,
@@ -450,12 +532,15 @@ def process_pptx() -> int:
             "img_size": int(args.resize),
             "keep_presenter_notes": args.keep_presenter_notes,
             "add_to_notes": args.add_to_notes,
-            "add_to_notes_all_slides": args.add_to_notes_all_slides
+            "add_to_notes_all_slides": args.add_to_notes_all_slides,
+            "complex_alt_text": args.complex_alt_text
         }
 
-        if args.replace != "":
+        if image_file_name != "" and powerpoint_file_name == "":
+            err = generate_alt_text_image(image_file_name, settings, args.verbose, args.debug)
+        elif args.replace != "":
             # file with alt text provided
-            err = replace_alt_texts(powerpoint_file_name, args.replace, None, False, args.verbose, args.debug)
+            err = update_pptx_df(powerpoint_file_name, args.replace, None, False, args.verbose, args.debug)
         elif args.remove_presenter_notes:
             err = remove_presenter_notes(powerpoint_file_name, args.verbose)
         elif args.export_presenter_notes:
@@ -466,8 +551,12 @@ def process_pptx() -> int:
             if args.add_to_notes or args.add_to_notes_all_slides:
                 print(f"Model: {model_str}")
                 print(f"Presenter notes prompt: '{prompt_presenter_notes}'")
-                # export slides to images so that model can interpret the whole slide
+                
+                print("Exporting slides to images...")
+                t_export = TicToc()
+                t_export.tic()
                 err = export_slides_to_images(powerpoint_file_name, args.verbose)
+                t_export.toc("Exporting slides took: ")
 
             # add alt-text
             if not err:
@@ -475,7 +564,8 @@ def process_pptx() -> int:
                     print(f"Completed slide: {result}")
 
     print()
-    t.toc('auto_alt_text took')
+    elapsed = t.tocvalue()
+    print(f"auto_alt_text took: {elapsed:.0f} seconds")
 
     return int(err)
 

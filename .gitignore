@@ -7,4 +7,4 @@ llava/*
 *.ttf
 .pylintrc
 __pycache__/*
-auto_alt_text/__pycache__/*
+aat/__pycache__/*

@@ -8,9 +8,14 @@ import platform
 import pathlib
 import subprocess
 import pandas as pd
+import xml.etree.ElementTree as ET
+import xml.dom.minidom
+import uuid
 from PIL import Image
 from pptx.util import Cm
 from pptx.oxml.ns import _nsmap
+from pptx.oxml.ns import qn
+from pptx.oxml import parse_xml
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.shapes.base import BaseShape
 from pptx import Presentation
@@ -28,7 +33,7 @@ def set_alt_text(shape: BaseShape, alt_text: str) -> None:
     try:
         shape._element._nvXxPr.cNvPr.attrib["descr"] = alt_text
     except Exception as e:
-        print(f"--> Unable to set alt_text: {shape.shape_type}, {shape.name}\n{str(e)}\nAlt_text: {alt_text}")
+        print(f"--> Unable to set alt_text: {shape.shape_type}, {shape.name}\n{str(e)}\nAlt_text: {alt_text}", file=sys.stderr)
 
 # see https://stackoverflow.com/questions/63802783/check-if-image-is-decorative-in-powerpoint-using-python-pptx
 def is_decorative(shape) -> bool:
@@ -38,6 +43,9 @@ def is_decorative(shape) -> bool:
     cNvPr = shape._element._nvXxPr.cNvPr
     adec_decoratives = cNvPr.xpath(".//adec:decorative[@val='1']")
     return bool(adec_decoratives)
+
+def set_decorative_status(shape, is_decorative):
+    print("Not yet working...", file=sys.stderr)
 
 def process_shape(
         shape: BaseShape,
@@ -154,6 +162,7 @@ def process_shape(
                 model_str,
                 f"{pptx_name}{pptx_extension}",
                 slide_cnt + 1,
+                group_shape.shape_id,
                 group_shape.name,
                 "Group",
                 part_of_group,
@@ -161,7 +170,9 @@ def process_shape(
                 len(stored_alt_text),
                 "",
                 decorative,
-                image_file_path
+                False,
+                "",
+                ""
             ]
             pptx['df'] = df
 
@@ -176,8 +187,8 @@ def process_shape(
         group_shape:BaseShape = get_current_group_shape(pptx)
 
         # only generate alt text when generate options is True and decorative is False
-        if not decorative:
-            err, image_file_path = process_shape_and_generate_alt_text(shape, pptx, settings, debug)
+        #if not decorative:
+        err, image_file_path = process_shape_and_generate_alt_text(shape, pptx, settings, debug)
 
         if not err:
             part_of_group = "No"
@@ -207,6 +218,7 @@ def process_shape(
                     model_str,
                     f"{pptx_name}{pptx_extension}",
                     slide_cnt + 1,
+                    shape.shape_id,
                     shape.name,
                     "Picture",
                     part_of_group,
@@ -214,7 +226,9 @@ def process_shape(
                     len(stored_alt_text),
                     "",
                     decorative,
-                    image_file_path
+                    False,
+                    image_file_path,
+                    settings['complex_alt_text']
                 ]
                 pptx['df'] = df
                 pptx["slide_image_cnt"] = slide_image_cnt + 1
@@ -437,6 +451,7 @@ def process_object(
         model_str,
         f"{pptx_name}{pptx_extension}",
         slide_cnt + 1,
+        shape.shape_id,
         shape.name,
         shape_type2str(shape.shape_type),
         part_of_group,
@@ -444,7 +459,9 @@ def process_object(
         len(stored_alt_text),
         "",
         decorative,
-        image_file_path
+        False,
+        "",
+        ""
     ]
     pptx['df'] = df
 
@@ -513,6 +530,8 @@ def process_shape_and_generate_alt_text(
     err:bool = False
     image_file_path:str = ""
 
+    decorative: bool = is_decorative(shape)
+
     # get image
     image_stream = None
     extension:str = ""
@@ -560,7 +579,8 @@ def process_shape_and_generate_alt_text(
             with open(image_file_path, "wb") as f:
                 f.write(image_stream)
 
-            alt_text, err = generate_description(image_file_path, extension, settings, verbose=verbose)
+            if not decorative:
+                alt_text, err = generate_description(image_file_path, extension, settings, verbose=verbose)
         else:
             alt_text = get_alt_text(shape)
 
@@ -581,8 +601,8 @@ def process_shape_and_generate_alt_text(
             if debug:
                 print(f"Len: {len(alt_text)}, Content: {alt_text}")
 
-            if len(alt_text) > 0:
-                set_alt_text(shape, alt_text)
+            #if len(alt_text) > 0:
+            set_alt_text(shape, alt_text)
 
     return err, image_file_path
 
@@ -598,7 +618,8 @@ def process_shapes_from_file(
     ) -> Tuple[list[BaseShape], int, int]:
 
     """ recursive function to process shapes and shapes within groups """
-    
+    err: bool = False
+
     # Check if the shape has a picture
     if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
 
@@ -611,7 +632,16 @@ def process_shapes_from_file(
             slide_object_cnt += 1
             object_cnt += 1
 
-            group_shape_list, object_cnt, slide_object_cnt = process_shapes_from_file(embedded_shape, group_shape_list, df, slide_cnt, slide_object_cnt, object_cnt, verbose, debug)
+            group_shape_list, object_cnt, slide_object_cnt = process_shapes_from_file(
+                embedded_shape,
+                group_shape_list,
+                df,
+                slide_cnt,
+                slide_object_cnt,
+                object_cnt,
+                verbose,
+                debug
+            )
 
         #if debug:
         #    print(f"> slide_cnt: {slide_cnt}, slide_object_cnt: {slide_object_cnt}")
@@ -647,23 +677,37 @@ def process_shapes_from_file(
         group_shape_list = group_shape_list[:-1]
 
     elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-
+        err = False
         row = df.loc[
             (df['Slide'] == slide_cnt) &
-            (df['ObjectName'] == shape.name) &
+            (df['ShapeID'] == shape.shape_id) &
             (df['ObjectType'] == "Picture")
         ]
-        if not row.empty:
+        
+        if row.empty:
+            print("Error, picture not found", file=sys.stderr)
+            err = True
+        else:
             alt_text = row.at[row.index[0], 'Alt_Text']
             decorative = row.at[row.index[0], 'Decorative']
-        else:
-            alt_text = ""
-            decorative = False
+            complex_image = row.at[row.index[0], 'Complex']
 
-        if decorative:
-            alt_text = ""
-
-        set_alt_text(shape, alt_text)
+            if not decorative:
+                if is_decorative(shape) != decorative:
+                    set_decorative_status(shape, False)
+                # Alt-Text
+                if complex_image:
+                    # switch to Complex Alt Text
+                    alt_text = df.loc[row.iloc[0].name, 'Complex_Alt_Text']
+                    df.loc[row.iloc[0].name, 'Alt_Text'] = alt_text
+                    set_alt_text(shape, alt_text)
+                else:
+                    if get_alt_text(shape) != alt_text:
+                        set_alt_text(shape, alt_text)
+            else:
+                # Decorative
+                if is_decorative(shape) != decorative:
+                    set_decorative_status(shape, True)
 
         slide_object_cnt += 1
         object_cnt += 1
@@ -737,10 +781,12 @@ def add_presenter_note(
             # place new presenter notes before old ones
             presenter_notes = f"{presenter_notes}\n\n{slide.notes_slide.notes_text_frame.text}"
 
-        slide.notes_slide.notes_text_frame.text = presenter_notes
-
-        if verbose:
-            print(f"Slide: {pptx["slide_cnt"] + 1}\t{slide.notes_slide.notes_text_frame.text}")
+        if slide.notes_slide.notes_text_frame is not None:
+            slide.notes_slide.notes_text_frame.text = presenter_notes
+            if verbose:
+                print(f"Slide: {pptx["slide_cnt"] + 1}\t{slide.notes_slide.notes_text_frame.text}")
+        else:
+            print(f"Unable to set presenter notes to:\n '{presenter_notes}'", file=sys.stderr)
 
         model_str = settings['model']
         pptx_extension = pptx['pptx_extension']
@@ -749,6 +795,7 @@ def add_presenter_note(
             model_str,
             f"{pathlib.Path(pptx_path).stem}{pptx_extension}",
             pptx['slide_cnt'] + 1,
+            0,
             "Slide",
             "",
             "",
@@ -756,7 +803,9 @@ def add_presenter_note(
             0,
             presenter_notes,
             False,
-            slide_image_file_path
+            False,
+            slide_image_file_path,
+            ""
         ]
         pptx['df'] = df
     else:

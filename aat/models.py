@@ -749,7 +749,7 @@ def setup_mlx_vlm(settings: dict) -> bool:
     tokenizer_config = {
         "trust_remote_code": True
     }
-    model, processor = load(model_path, tokenizer_config)
+    model, processor = load(model_path) #, tokenizer_config)
 
     settings['mlx-vlm-model'] = model
     settings['mlx-vlm-tokenizer'] = processor
@@ -791,12 +791,12 @@ def use_mlx_vlm(
             the_prompt = f"<image>\n{settings['prompt']}"
 
         prompt = processor.tokenizer.apply_chat_template(
-            [ {"role": "user", "content": the_prompt} ],
-            tokenize=False,
-            add_generation_prompt=True,
+           [ {"role": "user", "content": the_prompt} ],
+           tokenize=False,
+           add_generation_prompt=True,
         )
 
-        output = generate(model, processor, img_base64_str, prompt, verbose=False)
+        output = generate(model, processor, img_base64_str, prompt, verbose=True)
 
         #output = output.replace("\n", "")
         output = output.replace("</s>", "")

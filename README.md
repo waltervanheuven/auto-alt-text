@@ -219,7 +219,7 @@ python -m aat --pptx pptx/test1.pptx --model llava:latest --use_ollama --add_to_
 Add `--help` to show all command line options.
 
 ```sh
-python -m aat --pptx --help
+python -m aat --help
 ```
 
 ## Known issues

@@ -22,7 +22,7 @@ def process_images_from_pptx(
         verbose: bool = False
     ) -> Generator[int, None, None]:
     """
-    Loop through images in the slides of a Powerpint file and set image description based 
+    Loop through images in the slides of a Powerpoint file and set image description based 
     on image description from Kosmos-2, OpenCLIP, LLaVA, etc.
     """
     err: bool = False
